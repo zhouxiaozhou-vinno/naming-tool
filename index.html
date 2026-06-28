@@ -56,6 +56,7 @@
 <body>
 <div class="container" id="app"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 <script>
   const ADMIN_PASSWORD = "admin123";
   // ========== 请替换成你自己的 EmailJS 三把钥匙 ==========
@@ -64,19 +65,22 @@
   const EMAILJS_TEMPLATE_ID = "template_ddk8ga1";
   // ======================================================
 
-  // 默认配置
+  // 默认配置（包含中英文双字段）
   const defaultConfig = {
     productLine: "Azolla",
     valueProp: "床旁诊断的指引者，医生的合作伙伴",
+    valuePropEn: "The Guide at the Point of Care — a partner, not just a tool",
     marketPos: "与V系列并行，逐步替代V系列高中端便携产品。高端对标迈瑞M9~M11，中端对标MX3~MX6。",
+    marketPosEn: "Parallel to V series, gradually replacing high/mid-range V series portable systems. High-end benchmark: Mindray M9~M11; mid-range: MX3~MX6.",
     namingImagery: "指引（导航 & 光）、效率（智能）、助手（人性化）。需支持Pro/Lite/Plus等扩展。",
+    namingImageryEn: "Guidance (navigation & light), Efficiency (intelligence), Assistance (human-centric). Must support future series expansion (Pro/Lite/Plus).",
     competitors: "Lumify, Vivid, Acuson, M9",
     candidates: [
-      { name: "Navos", chinese: "奈沃斯", ipa: "/ˈnævɒs/", logic: "Nav+os，导航系统" },
-      { name: "Cynos", chinese: "赛诺斯", ipa: "/ˈsaɪnɒs/", logic: "源自北极星，保留指引意" },
-      { name: "Toris", chinese: "托瑞斯", ipa: "/ˈtɔː.rɪs/", logic: "Tower of light，高塔之光" },
-      { name: "Navix", chinese: "纳维克斯", ipa: "/ˈnæv.ɪks/", logic: "拉丁语 navis，超声诊断导航" },
-      { name: "Lumis", chinese: "鲁米斯", ipa: "/ˈluː.mɪs/", logic: "Lumen+is，光之所至，诊断即明" }
+      { name: "Navos", chinese: "奈沃斯", ipa: "/ˈnævɒs/", logic: "Nav+os，导航系统", logicEn: "Nav+os, navigation system" },
+      { name: "Cynos", chinese: "赛诺斯", ipa: "/ˈsaɪnɒs/", logic: "源自北极星，保留指引意", logicEn: "Derived from Cynosure (Polaris), guidance" },
+      { name: "Toris", chinese: "托瑞斯", ipa: "/ˈtɔː.rɪs/", logic: "Tower of light，高塔之光", logicEn: "Tower of light, beacon" },
+      { name: "Navix", chinese: "纳维克斯", ipa: "/ˈnæv.ɪks/", logic: "拉丁语 navis，超声诊断导航", logicEn: "Latin navis (ship/navigate), diagnostic navigation" },
+      { name: "Lumis", chinese: "鲁米斯", ipa: "/ˈluː.mɪs/", logic: "Lumen+is，光之所至，诊断即明", logicEn: "Lumen+is, where light reaches, diagnosis becomes clear" }
     ],
     dimensions: [
       { name: "战略匹配度", weight: 20 }, { name: "记忆度", weight: 15 },
@@ -107,16 +111,40 @@
   const suffixPool = ["Pro","Exp","Super","Elite","Max","Plus","Premium","Ultra","Platinum","Optimum","Turbo"];
   const letterPool = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split('');
 
-  const teamTrans = { "研发":"R&D", "国内市场战略部":"Domestic Market Strategy", "国内市场运营部":"Domestic Market Operations", "国际市场部":"International Market", "国际临床应用部":"International Clinical Applications", "销售":"Sales", "区域/国家代理商":"Regional/Country Distributor", "其他":"Other" };
-  const dimTrans = { "战略匹配度":"Strategic Fit", "记忆度":"Memorability", "发音友好度":"Pronunciation", "视觉美观度":"Visual Appeal", "语义联想":"Semantic Association", "品牌一致性":"Brand Consistency", "延展性":"Extendibility", "风险控制":"Risk Control" };
-  const patTrans = { "命名+数字+后缀":"Name+Digit+Suffix", "命名+数字":"Name+Digit", "命名+后缀":"Name+Suffix", "命名+数字+功能字母":"Name+Digit+FuncLetter", "命名+功能字母":"Name+FuncLetter", "命名+功能字母+后缀":"Name+FuncLetter+Suffix", "命名":"Name" };
+  const teamTrans = {
+    "研发": "R&D", "国内市场战略部": "Domestic Market Strategy", "国内市场运营部": "Domestic Market Operations",
+    "国际市场部": "International Market", "国际临床应用部": "International Clinical Applications",
+    "销售": "Sales", "区域/国家代理商": "Regional/Country Distributor", "其他": "Other"
+  };
+  const dimTrans = {
+    "战略匹配度": "Strategic Fit", "记忆度": "Memorability", "发音友好度": "Pronunciation",
+    "视觉美观度": "Visual Appeal", "语义联想": "Semantic Association", "品牌一致性": "Brand Consistency",
+    "延展性": "Extendibility", "风险控制": "Risk Control"
+  };
+  const patTrans = {
+    "命名+数字+后缀": "Name+Digit+Suffix", "命名+数字": "Name+Digit", "命名+后缀": "Name+Suffix",
+    "命名+数字+功能字母": "Name+Digit+FuncLetter", "命名+功能字母": "Name+FuncLetter",
+    "命名+功能字母+后缀": "Name+FuncLetter+Suffix", "命名": "Name"
+  };
 
   // 入口
   window.onload = () => {
     const p = new URLSearchParams(location.search);
     const cfg = p.get('config');
-    if (cfg) loadSurveyMode(cfg, p.get('lang')||'zh');
-    else renderLogin();
+    if (cfg) {
+      let jsonStr;
+      try {
+        const binaryStr = atob(cfg);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+        jsonStr = pako.inflate(bytes, { to: 'string' });
+      } catch (e) {
+        jsonStr = decodeURIComponent(cfg);
+      }
+      loadSurveyMode(jsonStr, p.get('lang')||'zh');
+    } else {
+      renderLogin();
+    }
   };
 
   function renderLogin() {
@@ -133,9 +161,12 @@
       <div class="header"><h1>⚙️ VINNO 命名评估系统</h1></div>
       <div class="card"><h2>📋 产品基本信息</h2>
         <label>产品线名称</label><input id="productLine" value="${config.productLine}">
-        <label>价值主张</label><input id="valueProp" value="${config.valueProp}">
-        <label>市场定位</label><textarea id="marketPos">${config.marketPos}</textarea>
-        <label>命名意象</label><textarea id="namingImagery">${config.namingImagery}</textarea>
+        <label>价值主张（中文）</label><input id="valueProp" value="${config.valueProp}">
+        <label>价值主张 Value Proposition (English) [可选]</label><input id="valuePropEn" value="${config.valuePropEn||''}" placeholder="留空则英文问卷显示中文原文">
+        <label>市场定位（中文）</label><textarea id="marketPos">${config.marketPos}</textarea>
+        <label>市场定位 Market Positioning (English) [可选]</label><textarea id="marketPosEn">${config.marketPosEn||''}</textarea>
+        <label>命名意象（中文）</label><textarea id="namingImagery">${config.namingImagery}</textarea>
+        <label>命名意象 Naming Imagery (English) [可选]</label><textarea id="namingImageryEn">${config.namingImageryEn||''}</textarea>
         <label>竞品参考</label><input id="competitors" value="${config.competitors}">
       </div>
       <div class="card"><h2>✨ 候选名管理</h2>
@@ -173,12 +204,13 @@
       <div class="candidate-row">
         <input value="${cand.name}" onchange="config.candidates[${i}].name=this.value; saveConfig();" placeholder="英文名">
         <input value="${cand.chinese}" onchange="config.candidates[${i}].chinese=this.value; saveConfig();" placeholder="中文音译">
-        <input value="${cand.ipa || ''}" onchange="config.candidates[${i}].ipa=this.value; saveConfig();" placeholder="英标" style="flex:1">
-        <input value="${cand.logic}" onchange="config.candidates[${i}].logic=this.value; saveConfig();" placeholder="中文逻辑" style="flex:2">
+        <input value="${cand.ipa || ''}" onchange="config.candidates[${i}].ipa=this.value; saveConfig();" placeholder="英标 (IPA)" style="flex:1">
+        <input value="${cand.logic}" onchange="config.candidates[${i}].logic=this.value; saveConfig();" placeholder="中文命名逻辑" style="flex:2">
+        <input value="${cand.logicEn || ''}" onchange="config.candidates[${i}].logicEn=this.value; saveConfig();" placeholder="英文逻辑 (English Logic)" style="flex:2">
         <button class="delete-btn" onclick="config.candidates.splice(${i},1); renderCandidates(); saveConfig();">✕</button>
       </div>`).join('');
   }
-  window.addCandidate = () => { config.candidates.push({name:'',chinese:'',ipa:'',logic:''}); renderCandidates(); saveConfig(); };
+  window.addCandidate = () => { config.candidates.push({name:'',chinese:'',ipa:'',logic:'',logicEn:''}); renderCandidates(); saveConfig(); };
 
   function renderDims() {
     const c = document.getElementById('dimContainer');
@@ -210,6 +242,7 @@
     if(btn) btn.textContent = allSel ? '取消' : '全选';
   }
 
+  // 数字库
   function renderDigitLib() {
     let h = '';
     const allVals = Object.values(digitGroups).flatMap(g=>g.values);
@@ -253,6 +286,7 @@
     renderDigitLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newDigit').value = '';
   };
 
+  // 后缀库
   function renderSuffixLib() {
     let h = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelSuffixes()">${suffixPool.every(s=>config.modelRule.suffixes.includes(s))?'取消':'全选'}</button>`;
     suffixPool.forEach(s => h += `<label><input type="checkbox" value="${s}" ${config.modelRule.suffixes.includes(s)?'checked':''} onchange="toggleSuffix(this)"> ${s}</label>`);
@@ -288,6 +322,7 @@
     renderSuffixLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newSuffix').value = '';
   };
 
+  // 字母库
   function renderLetterLib() {
     let h = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelLetters()">${letterPool.every(l=>config.modelRule.funcLetters.includes(l))?'取消':'全选'}</button>`;
     letterPool.forEach(l => h += `<label><input type="checkbox" value="${l}" ${config.modelRule.funcLetters.includes(l)?'checked':''} onchange="toggleLetter(this)"> ${l}</label>`);
@@ -323,6 +358,7 @@
     renderLetterLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newLetter').value = '';
   };
 
+  // 自动生成推荐组合（空库不生成）
   function autoGenerateCombos() {
     const patterns = config.modelRule.rulePatterns;
     const digits = config.modelRule.digits;
@@ -365,6 +401,7 @@
     saveConfig();
   }
 
+  // 保存并生成链接（pako 压缩）
   function saveAndGenerate() {
     const patterns = config.modelRule.rulePatterns;
     if (patterns.some(p=>p.includes('数字')) && config.modelRule.digits.length===0)
@@ -376,8 +413,11 @@
 
     config.productLine = document.getElementById('productLine').value;
     config.valueProp = document.getElementById('valueProp').value;
+    config.valuePropEn = document.getElementById('valuePropEn').value;
     config.marketPos = document.getElementById('marketPos').value;
+    config.marketPosEn = document.getElementById('marketPosEn').value;
     config.namingImagery = document.getElementById('namingImagery').value;
+    config.namingImageryEn = document.getElementById('namingImageryEn').value;
     config.competitors = document.getElementById('competitors').value;
     config.modelRule.customRuleText = document.getElementById('customRuleText').value;
     config.modelRule.recommendedCombos = document.getElementById('recommendedCombos').value.split('\n').filter(s=>s.trim());
@@ -385,21 +425,27 @@
     saveConfig();
 
     const jsonStr = JSON.stringify(config);
-    const encoded = encodeURIComponent(jsonStr);
+    const compressed = pako.deflate(jsonStr);
+    const base64 = btoa(String.fromCharCode.apply(null, compressed));
+    const encoded = encodeURIComponent(base64);
     const base = location.origin + location.pathname;
     document.getElementById('linkZh').href = `${base}?config=${encoded}&lang=zh`;
     document.getElementById('linkZh').textContent = `${base}?config=${encoded}&lang=zh`;
     document.getElementById('linkEn').href = `${base}?config=${encoded}&lang=en`;
     document.getElementById('linkEn').textContent = `${base}?config=${encoded}&lang=en`;
     document.getElementById('surveyLinks').classList.remove('hidden');
+    if (!config.valuePropEn || !config.marketPosEn || !config.namingImageryEn) {
+      alert('注意：英文问卷的部分字段未填写，将显示中文原文。如需要纯英文问卷，请填写对应的英文输入框。');
+    }
   }
 
+  // AI 起名 (可选)
   window.aiGenerateNames = async function() {
     const key = prompt('输入DeepSeek API Key');
     if(!key) return;
     const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
       method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},
-      body: JSON.stringify({model:'deepseek-chat', messages:[{role:'user',content:'生成5个医疗设备候选名，JSON:[{name,chinese,ipa,logic}]'}]})
+      body: JSON.stringify({model:'deepseek-chat', messages:[{role:'user',content:'生成5个医疗设备候选名，JSON:[{name,chinese,ipa,logic,logicEn}]'}]})
     });
     const data = await res.json();
     config.candidates = JSON.parse(data.choices[0].message.content);
@@ -407,10 +453,10 @@
   };
 
   // ==================== 问卷模式 ====================
-  function loadSurveyMode(cfgStr, lang) {
+  function loadSurveyMode(jsonStr, lang) {
     let cfg;
     try {
-      cfg = JSON.parse(decodeURIComponent(cfgStr));
+      cfg = JSON.parse(jsonStr);
     } catch(e) {
       document.getElementById('app').innerHTML = '<div class="card"><p>问卷配置无效，请检查链接或联系管理员。</p></div>';
       return;
@@ -424,16 +470,21 @@
     const groupEn = { ones: 'Ones', tens: 'Tens', hundreds: 'Hundreds', thousands: 'Thousands' };
     const tGroup = (grp) => isZh ? (groupLabels[grp] || grp) : (groupEn[grp] || grp);
 
+    // 使用管理端填写的英文翻译，如果未填则退回中文
+    const marketPos = isZh ? cfg.marketPos : (cfg.marketPosEn || cfg.marketPos);
+    const valueProp = isZh ? cfg.valueProp : (cfg.valuePropEn || cfg.valueProp);
+    const namingImagery = isZh ? cfg.namingImagery : (cfg.namingImageryEn || cfg.namingImagery);
+
     document.getElementById('app').innerHTML = `
       <div class="header">
         <h1>VINNO ${cfg.productLine} ${T('系列 · 命名与型号最终评估', 'Series · Final Naming & Model Assessment')}</h1>
-        <p>${cfg.valueProp}</p>
+        <p>${valueProp}</p>
       </div>
       <div class="card">
         <h2>🎯 ${T('产品定位与命名方向', 'Product Positioning & Naming Direction')}</h2>
-        <p><strong>${T('市场定位：', 'Market Positioning: ')}</strong>${cfg.marketPos}</p>
-        <p><strong>${T('核心价值主张：', 'Core Value Proposition: ')}</strong>${cfg.valueProp}</p>
-        <p><strong>${T('命名意象方向：', 'Naming Imagery: ')}</strong>${cfg.namingImagery}</p>
+        <p><strong>${T('市场定位：', 'Market Positioning: ')}</strong>${marketPos}</p>
+        <p><strong>${T('核心价值主张：', 'Core Value Proposition: ')}</strong>${valueProp}</p>
+        <p><strong>${T('命名意象方向：', 'Naming Imagery: ')}</strong>${namingImagery}</p>
         <p><strong>${T('竞品参考：', 'Competitors: ')}</strong>${cfg.competitors}</p>
         <div>${cfg.candidates.map(c => `<span class="chip">${c.name} · ${T(c.chinese, c.ipa)}</span>`).join('')}</div>
       </div>
@@ -489,7 +540,8 @@
     cfg.candidates.forEach(c => {
       const tr = document.createElement('tr');
       const displayName = isZh ? `${c.name} · ${c.chinese}` : `${c.name} ${c.ipa}`;
-      tr.innerHTML = `<td class="name-cell">${displayName}<br><small>${c.logic}</small></td>`;
+      const logicText = isZh ? c.logic : (c.logicEn || c.logic);
+      tr.innerHTML = `<td class="name-cell">${displayName}<br><small>${logicText}</small></td>`;
       cfg.dimensions.forEach(dim => {
         const td = document.createElement('td');
         const sel = document.createElement('select');
@@ -591,7 +643,7 @@
     const combos = [];
     const needDigit = patterns.some(p => p.includes('数字'));
     if (needDigit && digits.length === 0) {
-      document.getElementById('comboExamples').innerHTML = '';
+      document.getElementById('comboExamples').innerHTML = '<span class="chip">管理员未配置数字档位</span>';
       return;
     }
 
@@ -664,7 +716,6 @@
       digits: digits.join(', '), suffixes: suffixes.join(', '), letters: letters.join(', '),
       model_feedback: document.getElementById('modelFeedback').value, scores_json: JSON.stringify(scores)
     };
-    // 使用原生 fetch 直接调用 EmailJS API，避免 CDN 被浏览器拦截
     fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
