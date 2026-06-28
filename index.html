@@ -62,14 +62,14 @@
 
 <script>
   const ADMIN_PASSWORD = "admin123";
-  // 👇 请替换成你自己的 EmailJS 三把钥匙 👇
+  // ========== 替换为你的 EmailJS 密钥 ==========
   const EMAILJS_PUBLIC_KEY = "SGWZZKBDK9xhn2jjo";
   const EMAILJS_SERVICE_ID = "service_f0jecjn";
   const EMAILJS_TEMPLATE_ID = "template_ddk8ga1";
-  // =============================================
+  // ===========================================
   emailjs.init(EMAILJS_PUBLIC_KEY);
 
-  // 默认配置（含音标和英文翻译占位）
+  // 默认配置
   const defaultConfig = {
     productLine: "Azolla",
     valueProp: "床旁诊断的指引者，医生的合作伙伴",
@@ -77,11 +77,11 @@
     namingImagery: "指引（导航 & 光）、效率（智能）、助手（人性化）。需支持Pro/Lite/Plus等扩展。",
     competitors: "Lumify, Vivid, Acuson, M9",
     candidates: [
-      { name: "Navos", chinese: "奈沃斯", ipa: "/ˈnævɒs/", logic: "Nav+os，导航系统", logicEn: "Nav+os, navigation system" },
-      { name: "Cynos", chinese: "赛诺斯", ipa: "/ˈsaɪnɒs/", logic: "源自北极星，保留指引意", logicEn: "Derived from Cynosure (Polaris), guidance" },
-      { name: "Toris", chinese: "托瑞斯", ipa: "/ˈtɔː.rɪs/", logic: "Tower of light，高塔之光", logicEn: "Tower of light, beacon" },
-      { name: "Navix", chinese: "纳维克斯", ipa: "/ˈnæv.ɪks/", logic: "拉丁语 navis，超声诊断导航", logicEn: "Latin navis (ship/navigate), diagnostic navigation" },
-      { name: "Lumis", chinese: "鲁米斯", ipa: "/ˈluː.mɪs/", logic: "Lumen+is，光之所至，诊断即明", logicEn: "Lumen+is, where light reaches, diagnosis becomes clear" }
+      { name: "Navos", chinese: "奈沃斯", ipa: "/ˈnævɒs/", logic: "Nav+os，导航系统" },
+      { name: "Cynos", chinese: "赛诺斯", ipa: "/ˈsaɪnɒs/", logic: "源自北极星，保留指引意" },
+      { name: "Toris", chinese: "托瑞斯", ipa: "/ˈtɔː.rɪs/", logic: "Tower of light，高塔之光" },
+      { name: "Navix", chinese: "纳维克斯", ipa: "/ˈnæv.ɪks/", logic: "拉丁语 navis，超声诊断导航" },
+      { name: "Lumis", chinese: "鲁米斯", ipa: "/ˈluː.mɪs/", logic: "Lumen+is，光之所至，诊断即明" }
     ],
     dimensions: [
       { name: "战略匹配度", weight: 20 }, { name: "记忆度", weight: 15 },
@@ -100,11 +100,8 @@
     teamOptions: ["研发","国内市场战略部","国内市场运营部","国际市场部","国际临床应用部","销售","区域/国家代理商","其他"]
   };
 
-  let config = JSON.parse(localStorage.getItem('namingConfig'));
-  if (!config) {
-    config = JSON.parse(JSON.stringify(defaultConfig));
-    localStorage.setItem('namingConfig', JSON.stringify(config));
-  }
+  let config = JSON.parse(localStorage.getItem('namingConfig')) || JSON.parse(JSON.stringify(defaultConfig));
+  function saveConfig() { localStorage.setItem('namingConfig', JSON.stringify(config)); }
 
   const digitGroups = {
     ones:   { label: "个位数", values: ["1","2","3","4","5","6","7","8","9"] },
@@ -132,14 +129,15 @@
     "命名+功能字母+后缀": "Name+FuncLetter+Suffix", "命名": "Name"
   };
 
-  function saveConfig() { localStorage.setItem('namingConfig', JSON.stringify(config)); }
-
-  // ==================== 入口 ====================
+  // 入口
   window.onload = () => {
     const p = new URLSearchParams(location.search);
     const cfg = p.get('config');
-    if (cfg) loadSurveyMode(cfg, p.get('lang')||'zh');
-    else renderLogin();
+    if (cfg) {
+      loadSurveyMode(cfg, p.get('lang')||'zh');
+    } else {
+      renderLogin();
+    }
   };
 
   function renderLogin() {
@@ -153,7 +151,7 @@
   }
   function doLogin() { if(document.getElementById('adminPass').value === ADMIN_PASSWORD) renderAdmin(); else document.getElementById('loginError').textContent = '密码错误'; }
 
-  // ==================== 管理面板 ====================
+  // 管理面板
   function renderAdmin() {
     const allPatterns = ["命名+数字+后缀","命名+数字","命名+后缀","命名+数字+功能字母","命名+功能字母","命名+功能字母+后缀","命名"];
     const allChecked = allPatterns.every(p => config.modelRule.rulePatterns.includes(p));
@@ -197,7 +195,8 @@
     document.getElementById('customRuleText').addEventListener('change', function() { config.modelRule.customRuleText = this.value; saveConfig(); });
     renderCandidates(); renderDims(); renderDigitLib(); renderSuffixLib(); renderLetterLib(); autoGenerateCombos();
   }
-  // 候选名渲染
+
+  // 所有管理功能函数（完整版）
   function renderCandidates() {
     const c = document.getElementById('candidatesContainer');
     c.innerHTML = config.candidates.map((cand,i) => `
@@ -222,7 +221,6 @@
   }
   window.addDim = () => { config.dimensions.push({name:'',weight:10}); renderDims(); saveConfig(); };
 
-  // 规则模式
   window.toggleRulePattern = function(cb) {
     if(cb.checked) config.modelRule.rulePatterns.push(cb.value);
     else config.modelRule.rulePatterns = config.modelRule.rulePatterns.filter(p=>p!==cb.value);
@@ -244,7 +242,7 @@
     if(btn) btn.textContent = allChecked ? '取消' : '全选';
   }
 
-  // 数字库
+  // 库函数
   function renderDigitLib() {
     let html = '';
     const allGroupVals = Object.values(digitGroups).flatMap(g => g.values);
@@ -290,7 +288,6 @@
     renderDigitLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newDigit').value = '';
   };
 
-  // 后缀库
   function renderSuffixLib() {
     const custom = config.modelRule.suffixes.filter(s => !suffixPool.includes(s));
     let html = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelectAllSuffixes()">${suffixPool.every(s=>config.modelRule.suffixes.includes(s))?'取消':'全选'}</button>`;
@@ -328,7 +325,6 @@
     renderSuffixLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newSuffix').value = '';
   };
 
-  // 字母库
   function renderLetterLib() {
     const custom = config.modelRule.funcLetters.filter(l => !letterPool.includes(l));
     let html = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelectAllLetters()">${letterPool.every(l=>config.modelRule.funcLetters.includes(l))?'取消':'全选'}</button>`;
@@ -395,7 +391,7 @@
     saveConfig();
   }
 
-  // 保存并生成链接
+  // 保存并生成链接（关键修正）
   function saveAndGenerate() {
     if ((config.modelRule.rulePatterns.some(p=>p.includes('数字')) && config.modelRule.digits.length===0) ||
         (config.modelRule.rulePatterns.some(p=>p.includes('后缀')) && config.modelRule.suffixes.length===0) ||
@@ -411,14 +407,14 @@
     config.modelRule.recommendedCombos = document.getElementById('recommendedCombos').value.split('\n').map(s=>s.trim()).filter(s=>s);
     config.teamOptions = document.getElementById('teamOptions').value.split(',').map(s=>s.trim());
     saveConfig();
-    const encoded = btoa(encodeURIComponent(JSON.stringify(config)));
+    const jsonStr = JSON.stringify(config);
+    const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
     const base = location.origin + location.pathname;
     document.getElementById('linkZh').href = `${base}?config=${encoded}&lang=zh`;
     document.getElementById('linkZh').textContent = `${base}?config=${encoded}&lang=zh`;
     document.getElementById('linkEn').href = `${base}?config=${encoded}&lang=en`;
     document.getElementById('linkEn').textContent = `${base}?config=${encoded}&lang=en`;
     document.getElementById('surveyLinks').classList.remove('hidden');
-    showToast('链接已生成');
   }
 
   // AI 起名 (DeepSeek)
@@ -429,15 +425,13 @@
     const promptText = `你是一个专业医疗设备命名专家，根据以下产品定义生成5个候选名，返回JSON。产品线：${config.productLine}，价值主张：${config.valueProp}，市场定位：${config.marketPos}，命名意象：${config.namingImagery}，竞品：${config.competitors}。每个候选名需包含 name, chinese, ipa, logic。`;
     try {
       const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
+        method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
         body: JSON.stringify({model:'deepseek-chat', messages:[{role:'user',content:promptText}], temperature:0.8})
       });
       const data = await resp.json();
       const names = JSON.parse(data.choices[0].message.content);
       config.candidates = names.map(n => ({name:n.name, chinese:n.chinese, ipa:n.ipa, logic:n.logic}));
-      renderCandidates(); saveConfig();
-      statusEl.textContent = '✅ 已更新';
+      renderCandidates(); saveConfig(); statusEl.textContent = '✅ 已更新';
     } catch(e) { statusEl.textContent = '❌ 失败'; }
   };
 
