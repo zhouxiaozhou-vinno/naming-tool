@@ -13,7 +13,7 @@
       --radius: 20px; --radius-sm: 12px;
     }
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height:1.6; padding:20px; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); line-height:1.6; padding:20px; }
     .container { max-width:1120px; margin:0 auto; }
     .header { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color:white; padding:36px; border-radius:24px; margin-bottom:24px; text-align:center; box-shadow:0 12px 40px rgba(0,0,0,0.1); }
     .card { background:var(--card-bg); border-radius:var(--radius); padding:32px 36px; margin-bottom:20px; box-shadow:var(--shadow); border:1px solid var(--border); }
@@ -66,7 +66,6 @@
   // ===========================================
   emailjs.init(EMAILJS_PUBLIC_KEY);
 
-  // 默认配置
   const defaultConfig = {
     productLine: "Azolla",
     valueProp: "床旁诊断的指引者，医生的合作伙伴",
@@ -113,7 +112,6 @@
   const dimTrans = { "战略匹配度":"Strategic Fit", "记忆度":"Memorability", "发音友好度":"Pronunciation", "视觉美观度":"Visual Appeal", "语义联想":"Semantic Association", "品牌一致性":"Brand Consistency", "延展性":"Extendibility", "风险控制":"Risk Control" };
   const patTrans = { "命名+数字+后缀":"Name+Digit+Suffix", "命名+数字":"Name+Digit", "命名+后缀":"Name+Suffix", "命名+数字+功能字母":"Name+Digit+FuncLetter", "命名+功能字母":"Name+FuncLetter", "命名+功能字母+后缀":"Name+FuncLetter+Suffix", "命名":"Name" };
 
-  // 入口
   window.onload = () => {
     const p = new URLSearchParams(location.search);
     const cfg = p.get('config');
@@ -127,7 +125,6 @@
   }
   function doLogin() { if(document.getElementById('adminPass').value === ADMIN_PASSWORD) renderAdmin(); else document.getElementById('loginError').textContent = '密码错误'; }
 
-  // ==================== 管理面板 ====================
   function renderAdmin() {
     const allPatterns = ["命名+数字+后缀","命名+数字","命名+后缀","命名+数字+功能字母","命名+功能字母","命名+功能字母+后缀","命名"];
     const allChecked = allPatterns.every(p => config.modelRule.rulePatterns.includes(p));
@@ -212,7 +209,6 @@
     if(btn) btn.textContent = allSel ? '取消' : '全选';
   }
 
-  // 数字库
   function renderDigitLib() {
     let h = '';
     const allVals = Object.values(digitGroups).flatMap(g=>g.values);
@@ -256,7 +252,6 @@
     renderDigitLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newDigit').value = '';
   };
 
-  // 后缀库
   function renderSuffixLib() {
     let h = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelSuffixes()">${suffixPool.every(s=>config.modelRule.suffixes.includes(s))?'取消':'全选'}</button>`;
     suffixPool.forEach(s => h += `<label><input type="checkbox" value="${s}" ${config.modelRule.suffixes.includes(s)?'checked':''} onchange="toggleSuffix(this)"> ${s}</label>`);
@@ -292,7 +287,6 @@
     renderSuffixLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newSuffix').value = '';
   };
 
-  // 字母库
   function renderLetterLib() {
     let h = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelLetters()">${letterPool.every(l=>config.modelRule.funcLetters.includes(l))?'取消':'全选'}</button>`;
     letterPool.forEach(l => h += `<label><input type="checkbox" value="${l}" ${config.modelRule.funcLetters.includes(l)?'checked':''} onchange="toggleLetter(this)"> ${l}</label>`);
@@ -328,7 +322,6 @@
     renderLetterLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newLetter').value = '';
   };
 
-  // ==================== 自动生成推荐组合（关键修正） ====================
   function autoGenerateCombos() {
     const patterns = config.modelRule.rulePatterns;
     const digits = config.modelRule.digits;
@@ -336,7 +329,6 @@
     const letters = config.modelRule.funcLetters;
     const combos = [];
 
-    // 如果没有任何数字被选中，但是存在需要数字的模式，直接清空推荐组合
     const needDigit = patterns.some(p => p.includes('数字'));
     if (needDigit && digits.length === 0) {
       config.modelRule.recommendedCombos = [];
@@ -345,12 +337,11 @@
       return;
     }
 
-    // 准备样本数字（如果数字为空但模式不需要数字，不会执行到这里）
     const allGroupVals = Object.values(digitGroups).flatMap(g => g.values);
     const series = ['ones','tens','hundreds','thousands'].map(g => digits.find(d => digitGroups[g].values.includes(d))).filter(Boolean);
     const custom = digits.filter(d => !allGroupVals.includes(d));
     const samples = [...new Set([...series, ...custom])];
-    if(samples.length === 0) samples.push('70'); // 此处应该永远不被触发，因为前面已处理数字为空的情况
+    if(samples.length === 0) samples.push('70');
 
     const sfx = suffixes.length > 0 ? suffixes[0] : null;
     const ltr = letters.length > 0 ? letters[0] : null;
@@ -359,7 +350,6 @@
       if (pattern.includes('数字') && digits.length === 0) return;
       if (pattern.includes('后缀') && suffixes.length === 0) return;
       if (pattern.includes('功能字母') && letters.length === 0) return;
-
       if (pattern === "命名+后缀") combos.push(`${config.productLine} ${sfx}`);
       else if (pattern === "命名+功能字母") combos.push(`${config.productLine} ${ltr}`);
       else if (pattern === "命名+功能字母+后缀") combos.push(`${config.productLine} ${ltr} ${sfx}`);
@@ -374,7 +364,6 @@
     saveConfig();
   }
 
-  // ==================== 保存并生成链接（终极修正：纯URI编码） ====================
   function saveAndGenerate() {
     const patterns = config.modelRule.rulePatterns;
     if (patterns.some(p=>p.includes('数字')) && config.modelRule.digits.length===0)
@@ -395,7 +384,6 @@
     saveConfig();
 
     const jsonStr = JSON.stringify(config);
-    // 终极方案：直接encodeURIComponent，不再使用Base64
     const encoded = encodeURIComponent(jsonStr);
     const base = location.origin + location.pathname;
     document.getElementById('linkZh').href = `${base}?config=${encoded}&lang=zh`;
@@ -405,7 +393,6 @@
     document.getElementById('surveyLinks').classList.remove('hidden');
   }
 
-  // AI 起名
   window.aiGenerateNames = async function() {
     const key = prompt('输入DeepSeek API Key');
     if(!key) return;
@@ -422,7 +409,7 @@
   function loadSurveyMode(cfgStr, lang) {
     let cfg;
     try {
-      cfg = JSON.parse(decodeURIComponent(cfgStr));
+      cfg = JSON.parse(cfgStr);
     } catch(e) {
       document.getElementById('app').innerHTML = '<div class="card"><p>问卷配置无效，请检查链接或联系管理员。</p></div>';
       return;
