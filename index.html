@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VINNO 命名评估系统</title>
-  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
   <style>
     :root {
       --primary: #0a1628; --primary-light: #13233f; --accent: #1e3a5f;
@@ -64,7 +63,6 @@
   const EMAILJS_SERVICE_ID = "service_f0jecjn";
   const EMAILJS_TEMPLATE_ID = "template_ddk8ga1";
   // ======================================================
-  emailjs.init(EMAILJS_PUBLIC_KEY);
 
   // 默认配置
   const defaultConfig = {
@@ -169,7 +167,6 @@
     renderCandidates(); renderDims(); renderDigitLib(); renderSuffixLib(); renderLetterLib(); autoGenerateCombos();
   }
 
-  // 候选名渲染
   function renderCandidates() {
     const c = document.getElementById('candidatesContainer');
     c.innerHTML = config.candidates.map((cand,i) => `
@@ -194,7 +191,6 @@
   }
   window.addDim = () => { config.dimensions.push({name:'',weight:10}); renderDims(); saveConfig(); };
 
-  // 规则模式
   window.toggleRulePattern = function(cb) {
     if(cb.checked) config.modelRule.rulePatterns.push(cb.value);
     else config.modelRule.rulePatterns = config.modelRule.rulePatterns.filter(p=>p!==cb.value);
@@ -214,7 +210,6 @@
     if(btn) btn.textContent = allSel ? '取消' : '全选';
   }
 
-  // 数字库
   function renderDigitLib() {
     let h = '';
     const allVals = Object.values(digitGroups).flatMap(g=>g.values);
@@ -258,7 +253,6 @@
     renderDigitLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newDigit').value = '';
   };
 
-  // 后缀库
   function renderSuffixLib() {
     let h = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelSuffixes()">${suffixPool.every(s=>config.modelRule.suffixes.includes(s))?'取消':'全选'}</button>`;
     suffixPool.forEach(s => h += `<label><input type="checkbox" value="${s}" ${config.modelRule.suffixes.includes(s)?'checked':''} onchange="toggleSuffix(this)"> ${s}</label>`);
@@ -294,7 +288,6 @@
     renderSuffixLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newSuffix').value = '';
   };
 
-  // 字母库
   function renderLetterLib() {
     let h = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelLetters()">${letterPool.every(l=>config.modelRule.funcLetters.includes(l))?'取消':'全选'}</button>`;
     letterPool.forEach(l => h += `<label><input type="checkbox" value="${l}" ${config.modelRule.funcLetters.includes(l)?'checked':''} onchange="toggleLetter(this)"> ${l}</label>`);
@@ -330,7 +323,6 @@
     renderLetterLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newLetter').value = '';
   };
 
-  // 自动生成推荐组合（空库不生成）
   function autoGenerateCombos() {
     const patterns = config.modelRule.rulePatterns;
     const digits = config.modelRule.digits;
@@ -373,7 +365,6 @@
     saveConfig();
   }
 
-  // 保存并生成链接（标准URI编码）
   function saveAndGenerate() {
     const patterns = config.modelRule.rulePatterns;
     if (patterns.some(p=>p.includes('数字')) && config.modelRule.digits.length===0)
@@ -403,7 +394,6 @@
     document.getElementById('surveyLinks').classList.remove('hidden');
   }
 
-  // AI 起名（可选）
   window.aiGenerateNames = async function() {
     const key = prompt('输入DeepSeek API Key');
     if(!key) return;
@@ -674,9 +664,19 @@
       digits: digits.join(', '), suffixes: suffixes.join(', '), letters: letters.join(', '),
       model_feedback: document.getElementById('modelFeedback').value, scores_json: JSON.stringify(scores)
     };
-    emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams)
-      .then(() => showToast('提交成功！'))
-      .catch(() => { document.getElementById('fallbackBox').style.display='block'; });
+    // 使用原生 fetch 直接调用 EmailJS API，避免 CDN 被浏览器拦截
+    fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        service_id: EMAILJS_SERVICE_ID,
+        template_id: EMAILJS_TEMPLATE_ID,
+        user_id: EMAILJS_PUBLIC_KEY,
+        template_params: templateParams
+      })
+    })
+    .then(() => showToast('提交成功！'))
+    .catch(() => { document.getElementById('fallbackBox').style.display='block'; });
   }
   function copyFallback() { const ta=document.getElementById('fallbackData'); ta.select(); document.execCommand('copy'); showToast('已复制'); }
   function showToast(msg) { const t=document.getElementById('toast'); if(t) { t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); } }
