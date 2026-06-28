@@ -13,7 +13,7 @@
       --radius: 20px; --radius-sm: 12px;
     }
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); line-height:1.6; padding:20px; }
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height:1.6; padding:20px; }
     .container { max-width:1120px; margin:0 auto; }
     .header { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color:white; padding:36px; border-radius:24px; margin-bottom:24px; text-align:center; box-shadow:0 12px 40px rgba(0,0,0,0.1); }
     .card { background:var(--card-bg); border-radius:var(--radius); padding:32px 36px; margin-bottom:20px; box-shadow:var(--shadow); border:1px solid var(--border); }
@@ -25,6 +25,7 @@
     .btn.gold { background:var(--gold); color:#000; }
     .btn.ai { background:#7c3aed; }
     .btn.outline { background:white; color:var(--accent); border:2px solid var(--accent); }
+    .btn.danger { background:#e74c3c; }
     .btn.sm { padding:4px 10px; font-size:12px; }
     .hidden { display:none !important; }
     .chip { background:#eef2ff; padding:6px 16px; border-radius:20px; display:inline-block; margin:4px; font-size:14px; }
@@ -329,48 +330,66 @@
     renderLetterLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newLetter').value = '';
   };
 
-  // 自动生成推荐组合
+  // ==================== 自动生成推荐组合（关键修正） ====================
   function autoGenerateCombos() {
-    const d = config.modelRule.digits, s = config.modelRule.suffixes, l = config.modelRule.funcLetters, p = config.modelRule.rulePatterns;
+    const patterns = config.modelRule.rulePatterns;
+    const digits = config.modelRule.digits;
+    const suffixes = config.modelRule.suffixes;
+    const letters = config.modelRule.funcLetters;
     const combos = [];
-    const allVals = Object.values(digitGroups).flatMap(g=>g.values);
-    const series = ['ones','tens','hundreds','thousands'].map(g => d.find(v => digitGroups[g].values.includes(v))).filter(Boolean);
-    const custom = d.filter(v => !allVals.includes(v));
+
+    // 如果模式需要数字但数字库为空，则跳过该模式
+    const needDigit = patterns.some(p => p.includes('数字'));
+    if (needDigit && digits.length === 0) {
+      // 不清空，但当前函数不生成任何组合，直接设置空并保存
+      config.modelRule.recommendedCombos = [];
+      if(document.getElementById('recommendedCombos')) document.getElementById('recommendedCombos').value = '';
+      saveConfig();
+      return;
+    }
+
+    // 如果模式需要后缀但后缀库为空，则跳过相关模式
+    // 如果模式需要字母但字母库为空，则跳过相关模式
+
+    // 准备样本数字
+    const allGroupVals = Object.values(digitGroups).flatMap(g => g.values);
+    const series = ['ones','tens','hundreds','thousands'].map(g => digits.find(d => digitGroups[g].values.includes(d))).filter(Boolean);
+    const custom = digits.filter(d => !allGroupVals.includes(d));
     const samples = [...new Set([...series, ...custom])];
-    if(samples.length===0) samples.push('70');
-    const sfx = s.length ? s[0] : 'Pro', ltr = l.length ? l[0] : 'C';
-    p.forEach(pattern => {
-      if(pattern.includes('后缀') && !s.length) return;
-      if(pattern.includes('功能字母') && !l.length) return;
-      if(pattern === '命名+后缀') combos.push(`${config.productLine} ${sfx}`);
-      else if(pattern === '命名+功能字母') combos.push(`${config.productLine} ${ltr}`);
-      else if(pattern === '命名+功能字母+后缀') combos.push(`${config.productLine} ${ltr} ${sfx}`);
-      else if(pattern === '命名+数字+后缀') samples.forEach(d => combos.push(`${config.productLine} ${d} ${sfx}`));
-      else if(pattern === '命名+数字') samples.forEach(d => combos.push(`${config.productLine} ${d}`));
-      else if(pattern === '命名+数字+功能字母') samples.forEach(d => combos.push(`${config.productLine} ${d} ${ltr}`));
-      else if(pattern === '命名') combos.push(config.productLine);
+    if(samples.length === 0) samples.push('70'); // 默认数字，但前面的检查保证不会出现这种情况
+
+    const sfx = suffixes.length > 0 ? suffixes[0] : null;
+    const ltr = letters.length > 0 ? letters[0] : null;
+
+    patterns.forEach(pattern => {
+      // 严格检查：模式要求数字但无数字，或要求后缀但无后缀，或要求字母但无字母，则跳过
+      if (pattern.includes('数字') && digits.length === 0) return;
+      if (pattern.includes('后缀') && suffixes.length === 0) return;
+      if (pattern.includes('功能字母') && letters.length === 0) return;
+
+      if (pattern === "命名+后缀") combos.push(`${config.productLine} ${sfx}`);
+      else if (pattern === "命名+功能字母") combos.push(`${config.productLine} ${ltr}`);
+      else if (pattern === "命名+功能字母+后缀") combos.push(`${config.productLine} ${ltr} ${sfx}`);
+      else if (pattern === "命名+数字+后缀") samples.forEach(d => combos.push(`${config.productLine} ${d} ${sfx}`));
+      else if (pattern === "命名+数字") samples.forEach(d => combos.push(`${config.productLine} ${d}`));
+      else if (pattern === "命名+数字+功能字母") samples.forEach(d => combos.push(`${config.productLine} ${d} ${ltr}`));
+      else if (pattern === "命名") combos.push(config.productLine);
     });
+
     config.modelRule.recommendedCombos = [...new Set(combos)];
     if(document.getElementById('recommendedCombos')) document.getElementById('recommendedCombos').value = config.modelRule.recommendedCombos.join('\n');
     saveConfig();
   }
 
-  // 保存并生成链接（增加库空校验）
+  // 保存并生成链接（含库空校验）
   function saveAndGenerate() {
     const patterns = config.modelRule.rulePatterns;
-    const hasDigitPattern = patterns.some(p => p.includes('数字'));
-    const hasSuffixPattern = patterns.some(p => p.includes('后缀'));
-    const hasLetterPattern = patterns.some(p => p.includes('功能字母'));
-
-    if (hasDigitPattern && config.modelRule.digits.length === 0) {
+    if (patterns.some(p=>p.includes('数字')) && config.modelRule.digits.length===0)
       return alert('您勾选了需要数字的规则模式，但未选择任何数字。请至少勾选一项数字档位库中的数字。');
-    }
-    if (hasSuffixPattern && config.modelRule.suffixes.length === 0) {
+    if (patterns.some(p=>p.includes('后缀')) && config.modelRule.suffixes.length===0)
       return alert('您勾选了需要后缀的规则模式，但未选择任何后缀。请至少勾选一项后缀库中的后缀。');
-    }
-    if (hasLetterPattern && config.modelRule.funcLetters.length === 0) {
+    if (patterns.some(p=>p.includes('功能字母')) && config.modelRule.funcLetters.length===0)
       return alert('您勾选了需要功能字母的规则模式，但未选择任何功能字母。请至少勾选一项功能字母库中的字母。');
-    }
 
     config.productLine = document.getElementById('productLine').value;
     config.valueProp = document.getElementById('valueProp').value;
@@ -383,7 +402,7 @@
     saveConfig();
 
     const jsonStr = JSON.stringify(config);
-    const encoded = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (_match, p1) => String.fromCharCode('0x' + p1)));
+    const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
     const base = location.origin + location.pathname;
     document.getElementById('linkZh').href = `${base}?config=${encoded}&lang=zh`;
     document.getElementById('linkZh').textContent = `${base}?config=${encoded}&lang=zh`;
@@ -392,7 +411,7 @@
     document.getElementById('surveyLinks').classList.remove('hidden');
   }
 
-  // AI 起名
+  // AI 起名 (可选，与之前一致)
   window.aiGenerateNames = async function() {
     const key = prompt('输入DeepSeek API Key');
     if(!key) return;
@@ -404,12 +423,12 @@
     config.candidates = JSON.parse(data.choices[0].message.content);
     renderCandidates(); saveConfig();
   };
+
   // ==================== 问卷模式 ====================
   function loadSurveyMode(cfgStr, lang) {
     let cfg;
     try {
-      const decoded = decodeURIComponent(atob(cfgStr));
-      cfg = JSON.parse(decoded);
+      cfg = JSON.parse(decodeURIComponent(escape(atob(cfgStr))));
     } catch(e) {
       document.getElementById('app').innerHTML = '<div class="card"><p>问卷配置无效，请检查链接或联系管理员。</p></div>';
       return;
