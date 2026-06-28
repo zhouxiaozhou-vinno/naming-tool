@@ -44,7 +44,7 @@
     .live-card .score { font-size:28px; font-weight:800; color:var(--accent); }
     .option-group { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin-bottom:10px; }
     .option-group strong { margin-right:8px; }
-    .option-group label { display:inline-flex; align-items:center; margin:0; font-weight:400; cursor:pointer; }
+    .option-group label { display:inline-flex; align-items:center; margin:0; font-weight:400; cursor:pointer; white-space:nowrap; }
     .option-group input[type="checkbox"] { margin-right:4px; cursor:pointer; }
     .library-box { border:1px solid var(--border); border-radius:12px; padding:16px; margin:12px 0; background:#fafbfc; }
     .inline-add { display:flex; gap:8px; align-items:center; }
@@ -169,7 +169,6 @@
     renderCandidates(); renderDims(); renderDigitLib(); renderSuffixLib(); renderLetterLib(); autoGenerateCombos();
   }
 
-  // 候选名渲染
   function renderCandidates() {
     const c = document.getElementById('candidatesContainer');
     c.innerHTML = config.candidates.map((cand,i) => `
@@ -194,7 +193,6 @@
   }
   window.addDim = () => { config.dimensions.push({name:'',weight:10}); renderDims(); saveConfig(); };
 
-  // 规则模式
   window.toggleRulePattern = function(cb) {
     if(cb.checked) config.modelRule.rulePatterns.push(cb.value);
     else config.modelRule.rulePatterns = config.modelRule.rulePatterns.filter(p=>p!==cb.value);
@@ -338,31 +336,26 @@
     const letters = config.modelRule.funcLetters;
     const combos = [];
 
-    // 如果模式需要数字但数字库为空，则跳过该模式
+    // 如果没有任何数字被选中，但是存在需要数字的模式，直接清空推荐组合
     const needDigit = patterns.some(p => p.includes('数字'));
     if (needDigit && digits.length === 0) {
-      // 不清空，但当前函数不生成任何组合，直接设置空并保存
       config.modelRule.recommendedCombos = [];
       if(document.getElementById('recommendedCombos')) document.getElementById('recommendedCombos').value = '';
       saveConfig();
       return;
     }
 
-    // 如果模式需要后缀但后缀库为空，则跳过相关模式
-    // 如果模式需要字母但字母库为空，则跳过相关模式
-
-    // 准备样本数字
+    // 准备样本数字（如果数字为空但模式不需要数字，不会执行到这里）
     const allGroupVals = Object.values(digitGroups).flatMap(g => g.values);
     const series = ['ones','tens','hundreds','thousands'].map(g => digits.find(d => digitGroups[g].values.includes(d))).filter(Boolean);
     const custom = digits.filter(d => !allGroupVals.includes(d));
     const samples = [...new Set([...series, ...custom])];
-    if(samples.length === 0) samples.push('70'); // 默认数字，但前面的检查保证不会出现这种情况
+    if(samples.length === 0) samples.push('70'); // 此处应该永远不被触发，因为前面已处理数字为空的情况
 
     const sfx = suffixes.length > 0 ? suffixes[0] : null;
     const ltr = letters.length > 0 ? letters[0] : null;
 
     patterns.forEach(pattern => {
-      // 严格检查：模式要求数字但无数字，或要求后缀但无后缀，或要求字母但无字母，则跳过
       if (pattern.includes('数字') && digits.length === 0) return;
       if (pattern.includes('后缀') && suffixes.length === 0) return;
       if (pattern.includes('功能字母') && letters.length === 0) return;
@@ -381,7 +374,7 @@
     saveConfig();
   }
 
-  // 保存并生成链接（含库空校验）
+  // ==================== 保存并生成链接（终极修正：纯URI编码） ====================
   function saveAndGenerate() {
     const patterns = config.modelRule.rulePatterns;
     if (patterns.some(p=>p.includes('数字')) && config.modelRule.digits.length===0)
@@ -402,7 +395,8 @@
     saveConfig();
 
     const jsonStr = JSON.stringify(config);
-    const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
+    // 终极方案：直接encodeURIComponent，不再使用Base64
+    const encoded = encodeURIComponent(jsonStr);
     const base = location.origin + location.pathname;
     document.getElementById('linkZh').href = `${base}?config=${encoded}&lang=zh`;
     document.getElementById('linkZh').textContent = `${base}?config=${encoded}&lang=zh`;
@@ -411,7 +405,7 @@
     document.getElementById('surveyLinks').classList.remove('hidden');
   }
 
-  // AI 起名 (可选，与之前一致)
+  // AI 起名
   window.aiGenerateNames = async function() {
     const key = prompt('输入DeepSeek API Key');
     if(!key) return;
@@ -428,7 +422,7 @@
   function loadSurveyMode(cfgStr, lang) {
     let cfg;
     try {
-      cfg = JSON.parse(decodeURIComponent(escape(atob(cfgStr))));
+      cfg = JSON.parse(decodeURIComponent(cfgStr));
     } catch(e) {
       document.getElementById('app').innerHTML = '<div class="card"><p>问卷配置无效，请检查链接或联系管理员。</p></div>';
       return;
@@ -607,12 +601,20 @@
     const digits = cfg.modelRule.digits, suffixes = cfg.modelRule.suffixes, letters = cfg.modelRule.funcLetters;
     const patterns = cfg.modelRule.rulePatterns;
     const combos = [];
+    const needDigit = patterns.some(p => p.includes('数字'));
+    if (needDigit && digits.length === 0) {
+      document.getElementById('comboExamples').innerHTML = '';
+      return;
+    }
+
     const allGroupVals = Object.values(digitGroups).flatMap(g => g.values);
     const series = ['ones','tens','hundreds','thousands'].map(g => digits.find(d => digitGroups[g].values.includes(d))).filter(d => d);
     const customDigs = digits.filter(d => !allGroupVals.includes(d));
     const sampleDigits = [...new Set([...series, ...customDigs])];
     if(sampleDigits.length === 0) sampleDigits.push('70');
-    const firstSuffix = suffixes.length > 0 ? suffixes[0] : "Pro", firstLetter = letters.length > 0 ? letters[0] : "C";
+
+    const firstSuffix = suffixes.length > 0 ? suffixes[0] : "Pro";
+    const firstLetter = letters.length > 0 ? letters[0] : "C";
     patterns.forEach(pattern => {
       if (pattern.includes('后缀') && suffixes.length === 0) return;
       if (pattern.includes('功能字母') && letters.length === 0) return;
