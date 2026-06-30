@@ -450,7 +450,7 @@
     renderCandidates(); saveConfig();
   };
 
-    // ==================== 问卷模式 ====================
+  // ==================== 问卷模式 ====================
   function loadSurveyMode(jsonStr, lang) {
     let cfg;
     try {
@@ -551,7 +551,7 @@
         sel.dataset.candidate = c.name;
         sel.dataset.dimension = dim.name;
         sel.innerHTML = '<option value="">-</option>' + [...Array(10).keys()].map(i => `<option value="${i+1}">${i+1}</option>`).join('');
-        sel.addEventListener('change', () => { updateSurveyScores(cfg, isZh, T); updateCombos(); });
+        sel.addEventListener('change', () => { updateSurveyScores(cfg, isZh, T); window._updateCombos && window._updateCombos(); });
         td.appendChild(sel); tr.appendChild(td);
       });
       tbody.appendChild(tr);
@@ -567,7 +567,7 @@
 
     renderSurveySelections(cfg, isZh, T, tGroup);
 
-    // 推荐组合动态更新（核心）
+    // 推荐组合动态更新
     const updateCombos = () => {
       const customName = document.getElementById('customName').value.trim();
       const intuition = document.getElementById('intuition').value;
@@ -593,6 +593,7 @@
 
       generateCombosForName(selectedName, cfg);
     };
+    window._updateCombos = updateCombos;
 
     document.getElementById('intuition').addEventListener('change', updateCombos);
     document.getElementById('customName').addEventListener('input', updateCombos);
@@ -610,7 +611,7 @@
       const allChecked = Array.from(cbs).every(cb => cb.checked);
       cbs.forEach(cb => cb.checked = !allChecked);
       document.getElementById('rulePatternToggleBtn').textContent = allChecked ? T('全选', 'Select All') : T('取消', 'Deselect All');
-      updateCombos();
+      window._updateCombos();
     };
 
     window.toggleSkipCandidates = function() {
@@ -660,7 +661,7 @@
     cbs.forEach(cb => cb.checked = !allChecked);
     const btn = document.getElementById(btnId);
     if (btn) btn.textContent = allChecked ? '全选' : '取消';
-    updateCombos();
+    window._updateCombos && window._updateCombos();
   };
   window.toggleSurveyDigitGroup = (grp) => {
     const vals = digitGroups[grp].values.filter(v => config.modelRule.digits.includes(v));
@@ -670,7 +671,7 @@
     groupCbs.forEach(cb => cb.checked = !allChecked);
     const btn = document.getElementById(`digitToggle_${grp}`);
     if (btn) btn.textContent = allChecked ? '全选' : '取消';
-    updateCombos();
+    window._updateCombos && window._updateCombos();
   };
   window.toggleSurveyCustomDigits = () => {
     const allGroupVals = Object.values(digitGroups).flatMap(g => g.values);
@@ -681,7 +682,7 @@
     customCbs.forEach(cb => cb.checked = !allChecked);
     const btn = document.getElementById('digitToggle_custom');
     if (btn) btn.textContent = allChecked ? '全选' : '取消';
-    updateCombos();
+    window._updateCombos && window._updateCombos();
   };
 
   function generateCombosForName(name, cfg) {
