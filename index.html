@@ -52,6 +52,8 @@
     .candidate-row, .dim-row { display:flex; gap:8px; margin-bottom:10px; align-items:center; }
     .candidate-row input, .dim-row input { flex:1; }
     .delete-btn { background:#e74c3c; color:white; border:none; border-radius:6px; padding:2px 8px; cursor:pointer; }
+    .skip-candidates-label { display:flex !important; align-items:center !important; gap:8px !important; margin-top:12px !important; }
+    .skip-candidates-label input[type="checkbox"] { width:auto !important; margin:0 !important; }
   </style>
 </head>
 <body>
@@ -59,12 +61,12 @@
 
 <script>
   const ADMIN_PASSWORD = "admin123";
-  // 请替换成你自己的 EmailJS 密钥
+  // ========== 请替换成你自己的 EmailJS 三把钥匙 ==========
   const EMAILJS_PUBLIC_KEY = "SGWZZKBDK9xhn2jjo";
   const EMAILJS_SERVICE_ID = "service_f0jecjn";
   const EMAILJS_TEMPLATE_ID = "template_ddk8ga1";
+  // ======================================================
 
-  // 默认配置（包含中英文双字段）
   const defaultConfig = {
     productLine: "Azolla",
     valueProp: "床旁诊断的指引者，医生的合作伙伴",
@@ -126,7 +128,6 @@
     "命名+功能字母+后缀": "Name+FuncLetter+Suffix", "命名": "Name"
   };
 
-  // 入口
   window.onload = () => {
     const p = new URLSearchParams(location.search);
     const cfg = p.get('config');
@@ -152,7 +153,7 @@
   }
   function doLogin() { if(document.getElementById('adminPass').value === ADMIN_PASSWORD) renderAdmin(); else document.getElementById('loginError').textContent = '密码错误'; }
 
-  // ==================== 管理面板（包含英文输入框） ====================
+  // ==================== 管理面板 ====================
   function renderAdmin() {
     const allPatterns = ["命名+数字+后缀","命名+数字","命名+后缀","命名+数字+功能字母","命名+功能字母","命名+功能字母+后缀","命名"];
     const allChecked = allPatterns.every(p => config.modelRule.rulePatterns.includes(p));
@@ -197,7 +198,6 @@
     renderCandidates(); renderDims(); renderDigitLib(); renderSuffixLib(); renderLetterLib(); autoGenerateCombos();
   }
 
-  // 候选名渲染（含英文逻辑框）
   function renderCandidates() {
     const c = document.getElementById('candidatesContainer');
     c.innerHTML = config.candidates.map((cand,i) => `
@@ -223,7 +223,6 @@
   }
   window.addDim = () => { config.dimensions.push({name:'',weight:10}); renderDims(); saveConfig(); };
 
-  // 规则模式
   window.toggleRulePattern = function(cb) {
     if(cb.checked) config.modelRule.rulePatterns.push(cb.value);
     else config.modelRule.rulePatterns = config.modelRule.rulePatterns.filter(p=>p!==cb.value);
@@ -243,129 +242,120 @@
     if(btn) btn.textContent = allSel ? '取消' : '全选';
   }
 
-  // ==================== 数字库 ====================
+  // ==================== 数字库（完整） ====================
   function renderDigitLib() {
     let h = '';
-    const allVals = Object.values(digitGroups).flatMap(g => g.values);
+    const allVals = Object.values(digitGroups).flatMap(g=>g.values);
     const custom = config.modelRule.digits.filter(d => !allVals.includes(d));
-    for (let g in digitGroups) {
-      const vals = digitGroups[g].values;
-      const all = vals.every(v => config.modelRule.digits.includes(v));
-      h += `<div class="option-group"><strong>${digitGroups[g].label}</strong> <button class="btn outline sm" onclick="toggleSelDigits('${g}')">${all ? '取消' : '全选'}</button>`;
-      vals.forEach(v => h += `<label><input type="checkbox" value="${v}" ${config.modelRule.digits.includes(v) ? 'checked' : ''} onchange="toggleDigit(this)"> ${v}</label>`);
+    for(let g in digitGroups){
+      const vals = digitGroups[g].values, all = vals.every(v=>config.modelRule.digits.includes(v));
+      h += `<div class="option-group"><strong>${digitGroups[g].label}</strong> <button class="btn outline sm" onclick="toggleSelDigits('${g}')">${all?'取消':'全选'}</button>`;
+      vals.forEach(v => h += `<label><input type="checkbox" value="${v}" ${config.modelRule.digits.includes(v)?'checked':''} onchange="toggleDigit(this)"> ${v}</label>`);
       h += '</div>';
     }
-    if (custom.length) {
+    if(custom.length) {
       h += `<div class="option-group"><strong>自定义数字</strong> <button class="btn outline sm" onclick="toggleSelCustomDigits()">全选/取消</button>`;
-      custom.forEach(v => h += `<label><input type="checkbox" value="${v}" ${config.modelRule.digits.includes(v) ? 'checked' : ''} onchange="toggleDigit(this)"> ${v}</label>`);
+      custom.forEach(v => h += `<label><input type="checkbox" value="${v}" ${config.modelRule.digits.includes(v)?'checked':''} onchange="toggleDigit(this)"> ${v}</label>`);
       h += '</div>';
     }
     document.getElementById('digitLib').innerHTML = h;
   }
   window.toggleSelDigits = (g) => {
-    const vals = digitGroups[g].values;
-    const all = vals.every(v => config.modelRule.digits.includes(v));
-    if (all) config.modelRule.digits = config.modelRule.digits.filter(d => !vals.includes(d));
-    else vals.forEach(v => { if (!config.modelRule.digits.includes(v)) config.modelRule.digits.push(v); });
+    const vals = digitGroups[g].values, all = vals.every(v=>config.modelRule.digits.includes(v));
+    if(all) config.modelRule.digits = config.modelRule.digits.filter(d => !vals.includes(d));
+    else vals.forEach(v => { if(!config.modelRule.digits.includes(v)) config.modelRule.digits.push(v); });
     renderDigitLib(); autoGenerateCombos(); saveConfig();
   };
   window.toggleSelCustomDigits = () => {
-    const allVals = Object.values(digitGroups).flatMap(g => g.values);
+    const allVals = Object.values(digitGroups).flatMap(g=>g.values);
     const custom = config.modelRule.digits.filter(d => !allVals.includes(d));
     const all = custom.every(d => config.modelRule.digits.includes(d));
-    if (all) config.modelRule.digits = config.modelRule.digits.filter(d => allVals.includes(d));
-    else custom.forEach(d => { if (!config.modelRule.digits.includes(d)) config.modelRule.digits.push(d); });
+    if(all) config.modelRule.digits = config.modelRule.digits.filter(d => allVals.includes(d));
+    else custom.forEach(d => { if(!config.modelRule.digits.includes(d)) config.modelRule.digits.push(d); });
     renderDigitLib(); autoGenerateCombos(); saveConfig();
   };
-  window.toggleDigit = function (cb) {
-    if (cb.checked) { if (!config.modelRule.digits.includes(cb.value)) config.modelRule.digits.push(cb.value); }
-    else config.modelRule.digits = config.modelRule.digits.filter(d => d !== cb.value);
+  window.toggleDigit = function(cb) {
+    if(cb.checked) { if(!config.modelRule.digits.includes(cb.value)) config.modelRule.digits.push(cb.value); }
+    else config.modelRule.digits = config.modelRule.digits.filter(d => d!==cb.value);
     autoGenerateCombos(); saveConfig();
   };
   window.addDigit = () => {
     const raw = document.getElementById('newDigit').value.trim();
-    if (!raw) return;
-    raw.split(',').forEach(v => { if (v && !config.modelRule.digits.includes(v)) config.modelRule.digits.push(v); });
-    renderDigitLib(); autoGenerateCombos(); saveConfig();
-    document.getElementById('newDigit').value = '';
+    if(!raw) return;
+    raw.split(',').forEach(v => { if(v && !config.modelRule.digits.includes(v)) config.modelRule.digits.push(v); });
+    renderDigitLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newDigit').value = '';
   };
 
-  // ==================== 后缀库 ====================
+  // ==================== 后缀库（完整） ====================
   function renderSuffixLib() {
-    let h = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelSuffixes()">${suffixPool.every(s => config.modelRule.suffixes.includes(s)) ? '取消' : '全选'}</button>`;
-    suffixPool.forEach(s => h += `<label><input type="checkbox" value="${s}" ${config.modelRule.suffixes.includes(s) ? 'checked' : ''} onchange="toggleSuffix(this)"> ${s}</label>`);
+    let h = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelSuffixes()">${suffixPool.every(s=>config.modelRule.suffixes.includes(s))?'取消':'全选'}</button>`;
+    suffixPool.forEach(s => h += `<label><input type="checkbox" value="${s}" ${config.modelRule.suffixes.includes(s)?'checked':''} onchange="toggleSuffix(this)"> ${s}</label>`);
     h += '</div>';
     const custom = config.modelRule.suffixes.filter(s => !suffixPool.includes(s));
-    if (custom.length) {
+    if(custom.length) {
       h += `<div class="option-group"><strong>自定义后缀</strong> <button class="btn outline sm" onclick="toggleSelCustomSuffixes()">全选/取消</button>`;
-      custom.forEach(s => h += `<label><input type="checkbox" value="${s}" ${config.modelRule.suffixes.includes(s) ? 'checked' : ''} onchange="toggleSuffix(this)"> ${s}</label>`);
+      custom.forEach(s => h += `<label><input type="checkbox" value="${s}" ${config.modelRule.suffixes.includes(s)?'checked':''} onchange="toggleSuffix(this)"> ${s}</label>`);
       h += '</div>';
     }
     document.getElementById('suffixLib').innerHTML = h;
   }
   window.toggleSelSuffixes = () => {
-    const allSel = suffixPool.every(s => config.modelRule.suffixes.includes(s));
-    if (allSel) config.modelRule.suffixes = config.modelRule.suffixes.filter(s => !suffixPool.includes(s));
-    else suffixPool.forEach(s => { if (!config.modelRule.suffixes.includes(s)) config.modelRule.suffixes.push(s); });
+    if(suffixPool.every(s=>config.modelRule.suffixes.includes(s))) config.modelRule.suffixes = config.modelRule.suffixes.filter(s => !suffixPool.includes(s));
+    else suffixPool.forEach(s => { if(!config.modelRule.suffixes.includes(s)) config.modelRule.suffixes.push(s); });
     renderSuffixLib(); autoGenerateCombos(); saveConfig();
   };
   window.toggleSelCustomSuffixes = () => {
     const custom = config.modelRule.suffixes.filter(s => !suffixPool.includes(s));
-    const allSel = custom.every(s => config.modelRule.suffixes.includes(s));
-    if (allSel) config.modelRule.suffixes = config.modelRule.suffixes.filter(s => suffixPool.includes(s));
-    else custom.forEach(s => { if (!config.modelRule.suffixes.includes(s)) config.modelRule.suffixes.push(s); });
+    if(custom.every(s=>config.modelRule.suffixes.includes(s))) config.modelRule.suffixes = config.modelRule.suffixes.filter(s => suffixPool.includes(s));
+    else custom.forEach(s => { if(!config.modelRule.suffixes.includes(s)) config.modelRule.suffixes.push(s); });
     renderSuffixLib(); autoGenerateCombos(); saveConfig();
   };
-  window.toggleSuffix = function (cb) {
-    if (cb.checked) { if (!config.modelRule.suffixes.includes(cb.value)) config.modelRule.suffixes.push(cb.value); }
-    else config.modelRule.suffixes = config.modelRule.suffixes.filter(s => s !== cb.value);
+  window.toggleSuffix = function(cb) {
+    if(cb.checked) { if(!config.modelRule.suffixes.includes(cb.value)) config.modelRule.suffixes.push(cb.value); }
+    else config.modelRule.suffixes = config.modelRule.suffixes.filter(s => s!==cb.value);
     autoGenerateCombos(); saveConfig();
   };
   window.addSuffix = () => {
     const raw = document.getElementById('newSuffix').value.trim();
-    if (!raw) return;
-    raw.split(',').forEach(v => { if (v && !config.modelRule.suffixes.includes(v)) config.modelRule.suffixes.push(v); });
-    renderSuffixLib(); autoGenerateCombos(); saveConfig();
-    document.getElementById('newSuffix').value = '';
+    if(!raw) return;
+    raw.split(',').forEach(v => { if(v && !config.modelRule.suffixes.includes(v)) config.modelRule.suffixes.push(v); });
+    renderSuffixLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newSuffix').value = '';
   };
 
-  // ==================== 字母库 ====================
+  // ==================== 字母库（完整） ====================
   function renderLetterLib() {
-    let h = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelLetters()">${letterPool.every(l => config.modelRule.funcLetters.includes(l)) ? '取消' : '全选'}</button>`;
-    letterPool.forEach(l => h += `<label><input type="checkbox" value="${l}" ${config.modelRule.funcLetters.includes(l) ? 'checked' : ''} onchange="toggleLetter(this)"> ${l}</label>`);
+    let h = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelLetters()">${letterPool.every(l=>config.modelRule.funcLetters.includes(l))?'取消':'全选'}</button>`;
+    letterPool.forEach(l => h += `<label><input type="checkbox" value="${l}" ${config.modelRule.funcLetters.includes(l)?'checked':''} onchange="toggleLetter(this)"> ${l}</label>`);
     h += '</div>';
     const custom = config.modelRule.funcLetters.filter(l => !letterPool.includes(l));
-    if (custom.length) {
+    if(custom.length) {
       h += `<div class="option-group"><strong>自定义字母</strong> <button class="btn outline sm" onclick="toggleSelCustomLetters()">全选/取消</button>`;
-      custom.forEach(l => h += `<label><input type="checkbox" value="${l}" ${config.modelRule.funcLetters.includes(l) ? 'checked' : ''} onchange="toggleLetter(this)"> ${l}</label>`);
+      custom.forEach(l => h += `<label><input type="checkbox" value="${l}" ${config.modelRule.funcLetters.includes(l)?'checked':''} onchange="toggleLetter(this)"> ${l}</label>`);
       h += '</div>';
     }
     document.getElementById('letterLib').innerHTML = h;
   }
   window.toggleSelLetters = () => {
-    const allSel = letterPool.every(l => config.modelRule.funcLetters.includes(l));
-    if (allSel) config.modelRule.funcLetters = config.modelRule.funcLetters.filter(l => !letterPool.includes(l));
-    else letterPool.forEach(l => { if (!config.modelRule.funcLetters.includes(l)) config.modelRule.funcLetters.push(l); });
+    if(letterPool.every(l=>config.modelRule.funcLetters.includes(l))) config.modelRule.funcLetters = config.modelRule.funcLetters.filter(l => !letterPool.includes(l));
+    else letterPool.forEach(l => { if(!config.modelRule.funcLetters.includes(l)) config.modelRule.funcLetters.push(l); });
     renderLetterLib(); autoGenerateCombos(); saveConfig();
   };
   window.toggleSelCustomLetters = () => {
     const custom = config.modelRule.funcLetters.filter(l => !letterPool.includes(l));
-    const allSel = custom.every(l => config.modelRule.funcLetters.includes(l));
-    if (allSel) config.modelRule.funcLetters = config.modelRule.funcLetters.filter(l => letterPool.includes(l));
-    else custom.forEach(l => { if (!config.modelRule.funcLetters.includes(l)) config.modelRule.funcLetters.push(l); });
+    if(custom.every(l=>config.modelRule.funcLetters.includes(l))) config.modelRule.funcLetters = config.modelRule.funcLetters.filter(l => letterPool.includes(l));
+    else custom.forEach(l => { if(!config.modelRule.funcLetters.includes(l)) config.modelRule.funcLetters.push(l); });
     renderLetterLib(); autoGenerateCombos(); saveConfig();
   };
-  window.toggleLetter = function (cb) {
-    if (cb.checked) { if (!config.modelRule.funcLetters.includes(cb.value)) config.modelRule.funcLetters.push(cb.value); }
-    else config.modelRule.funcLetters = config.modelRule.funcLetters.filter(l => l !== cb.value);
+  window.toggleLetter = function(cb) {
+    if(cb.checked) { if(!config.modelRule.funcLetters.includes(cb.value)) config.modelRule.funcLetters.push(cb.value); }
+    else config.modelRule.funcLetters = config.modelRule.funcLetters.filter(l => l!==cb.value);
     autoGenerateCombos(); saveConfig();
   };
   window.addLetter = () => {
     const raw = document.getElementById('newLetter').value.trim();
-    if (!raw) return;
-    raw.split(',').forEach(v => { if (v && !config.modelRule.funcLetters.includes(v)) config.modelRule.funcLetters.push(v); });
-    renderLetterLib(); autoGenerateCombos(); saveConfig();
-    document.getElementById('newLetter').value = '';
+    if(!raw) return;
+    raw.split(',').forEach(v => { if(v && !config.modelRule.funcLetters.includes(v)) config.modelRule.funcLetters.push(v); });
+    renderLetterLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newLetter').value = '';
   };
 
   // ==================== 自动生成推荐组合 ====================
@@ -379,16 +369,16 @@
     const needDigit = patterns.some(p => p.includes('数字'));
     if (needDigit && digits.length === 0) {
       config.modelRule.recommendedCombos = [];
-      if (document.getElementById('recommendedCombos')) document.getElementById('recommendedCombos').value = '';
+      if(document.getElementById('recommendedCombos')) document.getElementById('recommendedCombos').value = '';
       saveConfig();
       return;
     }
 
     const allGroupVals = Object.values(digitGroups).flatMap(g => g.values);
-    const series = ['ones', 'tens', 'hundreds', 'thousands'].map(g => digits.find(d => digitGroups[g].values.includes(d))).filter(Boolean);
+    const series = ['ones','tens','hundreds','thousands'].map(g => digits.find(d => digitGroups[g].values.includes(d))).filter(Boolean);
     const custom = digits.filter(d => !allGroupVals.includes(d));
     const samples = [...new Set([...series, ...custom])];
-    if (samples.length === 0) samples.push('70');
+    if(samples.length === 0) samples.push('70');
 
     const sfx = suffixes.length > 0 ? suffixes[0] : null;
     const ltr = letters.length > 0 ? letters[0] : null;
@@ -407,18 +397,17 @@
     });
 
     config.modelRule.recommendedCombos = [...new Set(combos)];
-    if (document.getElementById('recommendedCombos')) document.getElementById('recommendedCombos').value = config.modelRule.recommendedCombos.join('\n');
+    if(document.getElementById('recommendedCombos')) document.getElementById('recommendedCombos').value = config.modelRule.recommendedCombos.join('\n');
     saveConfig();
   }
 
-  // ==================== 保存并生成链接（pako 压缩） ====================
   function saveAndGenerate() {
     const patterns = config.modelRule.rulePatterns;
-    if (patterns.some(p => p.includes('数字')) && config.modelRule.digits.length === 0)
+    if (patterns.some(p=>p.includes('数字')) && config.modelRule.digits.length===0)
       return alert('您勾选了需要数字的规则模式，但未选择任何数字。请至少勾选一项数字档位库中的数字。');
-    if (patterns.some(p => p.includes('后缀')) && config.modelRule.suffixes.length === 0)
+    if (patterns.some(p=>p.includes('后缀')) && config.modelRule.suffixes.length===0)
       return alert('您勾选了需要后缀的规则模式，但未选择任何后缀。请至少勾选一项后缀库中的后缀。');
-    if (patterns.some(p => p.includes('功能字母')) && config.modelRule.funcLetters.length === 0)
+    if (patterns.some(p=>p.includes('功能字母')) && config.modelRule.funcLetters.length===0)
       return alert('您勾选了需要功能字母的规则模式，但未选择任何功能字母。请至少勾选一项功能字母库中的字母。');
 
     config.productLine = document.getElementById('productLine').value;
@@ -430,8 +419,8 @@
     config.namingImageryEn = document.getElementById('namingImageryEn').value;
     config.competitors = document.getElementById('competitors').value;
     config.modelRule.customRuleText = document.getElementById('customRuleText').value;
-    config.modelRule.recommendedCombos = document.getElementById('recommendedCombos').value.split('\n').filter(s => s.trim());
-    config.teamOptions = document.getElementById('teamOptions').value.split(',').map(s => s.trim());
+    config.modelRule.recommendedCombos = document.getElementById('recommendedCombos').value.split('\n').filter(s=>s.trim());
+    config.teamOptions = document.getElementById('teamOptions').value.split(',').map(s=>s.trim());
     saveConfig();
 
     const jsonStr = JSON.stringify(config);
@@ -449,26 +438,24 @@
     }
   }
 
-  // AI 起名
-  window.aiGenerateNames = async function () {
+  window.aiGenerateNames = async function() {
     const key = prompt('输入DeepSeek API Key');
-    if (!key) return;
+    if(!key) return;
     const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: '生成5个医疗设备候选名，JSON:[{name,chinese,ipa,logic,logicEn}]' }] })
+      method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},
+      body: JSON.stringify({model:'deepseek-chat', messages:[{role:'user',content:'生成5个医疗设备候选名，JSON:[{name,chinese,ipa,logic,logicEn}]'}]})
     });
     const data = await res.json();
     config.candidates = JSON.parse(data.choices[0].message.content);
     renderCandidates(); saveConfig();
   };
 
-  // ==================== 问卷模式 ====================
+   // ==================== 问卷模式 ====================
   function loadSurveyMode(jsonStr, lang) {
     let cfg;
     try {
       cfg = JSON.parse(jsonStr);
-    } catch (e) {
+    } catch(e) {
       document.getElementById('app').innerHTML = '<div class="card"><p>问卷配置无效，请检查链接或联系管理员。</p></div>';
       return;
     }
@@ -513,6 +500,10 @@
         <h2>💡 ${T('自定义命名建议', 'Custom Name Suggestion')}</h2>
         <input id="customName" placeholder="${T('您的建议（英文）', 'Your suggestion (English)')}">
         <textarea id="customReason" rows="2" placeholder="${T('简述理由（选填）', 'Reason (optional)')}"></textarea>
+        <label class="skip-candidates-label">
+          <input type="checkbox" id="skipCandidates" onchange="toggleSkipCandidates()">
+          <span>${T('我不选择以上候选名，仅使用自定义命名', 'I do not choose any candidate, use my own name only')}</span>
+        </label>
       </div>
       <div class="card">
         <h2>📌 ${T('型号规则偏好', 'Model Rule Preferences')}</h2>
@@ -544,6 +535,7 @@
       <div class="toast" id="toast"></div>
     `;
 
+    // 矩阵渲染
     const matrixWrap = document.getElementById('matrixWrap');
     matrixWrap.innerHTML = `<table><thead><tr><th>${T('候选名称', 'Candidate')}</th>${cfg.dimensions.map(d => `<th>${tDim(d.name)}<br><small>${d.weight}%</small></th>`).join('')}</tr></thead><tbody id="matrixBody"></tbody></table>`;
     const tbody = document.getElementById('matrixBody');
@@ -558,8 +550,8 @@
         sel.className = 'score-select';
         sel.dataset.candidate = c.name;
         sel.dataset.dimension = dim.name;
-        sel.innerHTML = '<option value="">-</option>' + [...Array(10).keys()].map(i => `<option value="${i + 1}">${i + 1}</option>`).join('');
-        sel.addEventListener('change', () => updateSurveyScores(cfg, isZh, T));
+        sel.innerHTML = '<option value="">-</option>' + [...Array(10).keys()].map(i => `<option value="${i+1}">${i+1}</option>`).join('');
+        sel.addEventListener('change', () => { updateSurveyScores(cfg, isZh, T); updateCombos(); });
         td.appendChild(sel); tr.appendChild(td);
       });
       tbody.appendChild(tr);
@@ -575,27 +567,69 @@
 
     renderSurveySelections(cfg, isZh, T, tGroup);
 
+    // 推荐组合动态更新（核心）
     const updateCombos = () => {
-      let selectedName = cfg.productLine;
-      const intuition = document.getElementById('intuition').value;
       const customName = document.getElementById('customName').value.trim();
-      if (customName) selectedName = customName;
-      else if (intuition && intuition !== 'custom') selectedName = intuition;
+      const intuition = document.getElementById('intuition').value;
+      const scores = getCandidateScores(cfg);
+
+      let selectedName = cfg.productLine;
+      if (customName) {
+        selectedName = customName;
+      } else if (intuition && intuition !== 'custom') {
+        selectedName = intuition;
+      } else {
+        let maxScore = -1;
+        for (let c of cfg.candidates) {
+          const s = scores[c.name];
+          if (s && s.allFilled) {
+            if (s.weighted > maxScore) {
+              maxScore = s.weighted;
+              selectedName = c.name;
+            }
+          }
+        }
+      }
+
       generateCombosForName(selectedName, cfg);
     };
+
     document.getElementById('intuition').addEventListener('change', updateCombos);
     document.getElementById('customName').addEventListener('input', updateCombos);
+    document.getElementById('rulePatternSelect').addEventListener('change', updateCombos);
+    document.getElementById('digitSelect').addEventListener('change', updateCombos);
+    document.getElementById('suffixSelect').addEventListener('change', updateCombos);
+    document.getElementById('letterSelect').addEventListener('change', updateCombos);
     updateCombos();
 
     updateSurveyScores(cfg, isZh, T);
     document.getElementById('submitBtn').onclick = () => submitSurvey(cfg);
 
-    window.toggleSurveyRulePatterns = function () {
+    window.toggleSurveyRulePatterns = function() {
       const cbs = document.querySelectorAll('#rulePatternSelect input[type="checkbox"]');
       const allChecked = Array.from(cbs).every(cb => cb.checked);
       cbs.forEach(cb => cb.checked = !allChecked);
       document.getElementById('rulePatternToggleBtn').textContent = allChecked ? T('全选', 'Select All') : T('取消', 'Deselect All');
+      updateCombos();
     };
+
+    window.toggleSkipCandidates = function() {
+      updateSurveyScores(cfg, isZh, T);
+    };
+  }
+
+  function getCandidateScores(cfg) {
+    const scores = {};
+    cfg.candidates.forEach(c => {
+      const sels = document.querySelectorAll(`select[data-candidate="${c.name}"]`);
+      let sum = 0, allFilled = true;
+      sels.forEach(sel => {
+        if (!sel.value) allFilled = false;
+        else sum += parseInt(sel.value) * (cfg.dimensions.find(d => d.name === sel.dataset.dimension).weight / 100);
+      });
+      scores[c.name] = { allFilled, weighted: allFilled ? Math.round(sum * 100) / 10 : 0 };
+    });
+    return scores;
   }
 
   function renderSurveySelections(cfg, isZh, T, tGroup) {
@@ -626,6 +660,7 @@
     cbs.forEach(cb => cb.checked = !allChecked);
     const btn = document.getElementById(btnId);
     if (btn) btn.textContent = allChecked ? '全选' : '取消';
+    updateCombos();
   };
   window.toggleSurveyDigitGroup = (grp) => {
     const vals = digitGroups[grp].values.filter(v => config.modelRule.digits.includes(v));
@@ -635,6 +670,7 @@
     groupCbs.forEach(cb => cb.checked = !allChecked);
     const btn = document.getElementById(`digitToggle_${grp}`);
     if (btn) btn.textContent = allChecked ? '全选' : '取消';
+    updateCombos();
   };
   window.toggleSurveyCustomDigits = () => {
     const allGroupVals = Object.values(digitGroups).flatMap(g => g.values);
@@ -645,37 +681,56 @@
     customCbs.forEach(cb => cb.checked = !allChecked);
     const btn = document.getElementById('digitToggle_custom');
     if (btn) btn.textContent = allChecked ? '全选' : '取消';
+    updateCombos();
   };
 
   function generateCombosForName(name, cfg) {
-    const digits = cfg.modelRule.digits, suffixes = cfg.modelRule.suffixes, letters = cfg.modelRule.funcLetters;
-    const patterns = cfg.modelRule.rulePatterns;
+    const checkedDigits = Array.from(document.querySelectorAll('#digitSelect input:checked')).map(cb => cb.value);
+    const checkedSuffixes = Array.from(document.querySelectorAll('#suffixSelect input:checked')).map(cb => cb.value);
+    const checkedLetters = Array.from(document.querySelectorAll('#letterSelect input:checked')).map(cb => cb.value);
+    const checkedPatterns = Array.from(document.querySelectorAll('#rulePatternSelect input:checked')).map(cb => cb.value);
+
     const combos = [];
-    const needDigit = patterns.some(p => p.includes('数字'));
-    if (needDigit && digits.length === 0) {
+    const needDigit = checkedPatterns.some(p => p.includes('数字'));
+    const needSuffix = checkedPatterns.some(p => p.includes('后缀'));
+    const needLetter = checkedPatterns.some(p => p.includes('功能字母'));
+
+    // 如果需要的库都为空，显示提示
+    if ((needDigit && checkedDigits.length === 0) || (needSuffix && checkedSuffixes.length === 0) || (needLetter && checkedLetters.length === 0)) {
+      const lang = (new URLSearchParams(location.search).get('lang')||'zh') === 'en' ? 'en' : 'zh';
+      const hint = lang === 'en' ? 'Please tick at least one digit/suffix/letter to view recommended combinations.' : '请勾选至少一项数字、后缀或功能字母以查看推荐组合。';
+      document.getElementById('comboExamples').innerHTML = `<p style="color:#64748b; font-size:14px;">${hint}</p>`;
+      return;
+    }
+
+    if (checkedPatterns.length === 0) {
       document.getElementById('comboExamples').innerHTML = '';
       return;
     }
 
+    const getFirst = (group) => checkedDigits.find(d => digitGroups[group].values.includes(d));
+    const series = ['ones', 'tens', 'hundreds', 'thousands'].map(g => getFirst(g)).filter(Boolean);
     const allGroupVals = Object.values(digitGroups).flatMap(g => g.values);
-    const series = ['ones', 'tens', 'hundreds', 'thousands'].map(g => digits.find(d => digitGroups[g].values.includes(d))).filter(d => d);
-    const customDigs = digits.filter(d => !allGroupVals.includes(d));
-    const sampleDigits = [...new Set([...series, ...customDigs])];
+    const customDigits = checkedDigits.filter(d => !allGroupVals.includes(d));
+    const sampleDigits = [...new Set([...series, ...customDigits])];
     if (sampleDigits.length === 0) sampleDigits.push('70');
 
-    const firstSuffix = suffixes.length > 0 ? suffixes[0] : "Pro";
-    const firstLetter = letters.length > 0 ? letters[0] : "C";
-    patterns.forEach(pattern => {
-      if (pattern.includes('后缀') && suffixes.length === 0) return;
-      if (pattern.includes('功能字母') && letters.length === 0) return;
-      if (pattern === "命名+后缀") combos.push(`${name} ${firstSuffix}`);
-      else if (pattern === "命名+功能字母") combos.push(`${name} ${firstLetter}`);
-      else if (pattern === "命名+功能字母+后缀") combos.push(`${name} ${firstLetter} ${firstSuffix}`);
-      else if (pattern === "命名+数字+后缀") sampleDigits.forEach(d => combos.push(`${name} ${d} ${firstSuffix}`));
+    const sfx = checkedSuffixes.length > 0 ? checkedSuffixes[0] : null;
+    const ltr = checkedLetters.length > 0 ? checkedLetters[0] : null;
+
+    checkedPatterns.forEach(pattern => {
+      if (pattern.includes('数字') && checkedDigits.length === 0) return;
+      if (pattern.includes('后缀') && checkedSuffixes.length === 0) return;
+      if (pattern.includes('功能字母') && checkedLetters.length === 0) return;
+      if (pattern === "命名+后缀") combos.push(`${name} ${sfx}`);
+      else if (pattern === "命名+功能字母") combos.push(`${name} ${ltr}`);
+      else if (pattern === "命名+功能字母+后缀") combos.push(`${name} ${ltr} ${sfx}`);
+      else if (pattern === "命名+数字+后缀") sampleDigits.forEach(d => combos.push(`${name} ${d} ${sfx}`));
       else if (pattern === "命名+数字") sampleDigits.forEach(d => combos.push(`${name} ${d}`));
-      else if (pattern === "命名+数字+功能字母") sampleDigits.forEach(d => combos.push(`${name} ${d} ${firstLetter}`));
+      else if (pattern === "命名+数字+功能字母") sampleDigits.forEach(d => combos.push(`${name} ${d} ${ltr}`));
       else if (pattern === "命名") combos.push(name);
     });
+
     document.getElementById('comboExamples').innerHTML = combos.map(c => `<span class="chip">${c}</span>`).join('');
   }
 
@@ -691,10 +746,12 @@
       const card = document.getElementById(`card-${c.name}`);
       if (card) { card.querySelector('.score').textContent = all ? Math.round(sum * 100) / 10 : '--'; if (all) filled += cfg.dimensions.length; }
     });
+
     const total = cfg.candidates.length * cfg.dimensions.length;
+    const skip = document.getElementById('skipCandidates')?.checked || false;
     const btn = document.getElementById('submitBtn'), status = document.getElementById('status');
-    if (filled === total) {
-      status.textContent = T('✅ 所有评分已完成，可以提交', '✅ All candidates scored. Ready to submit.');
+    if (skip || filled === total) {
+      status.textContent = T('✅ 可以提交', '✅ Ready to submit.');
       btn.disabled = false;
       btn.textContent = T('✅ 提交评估', '✅ Submit Assessment');
     } else {
@@ -708,12 +765,18 @@
     const dept = document.getElementById('dept').value;
     if (!dept) return alert('请选择团队职能');
     const scores = {};
-    cfg.candidates.forEach(c => {
-      const s = {};
-      cfg.dimensions.forEach(d => { const sel = document.querySelector(`select[data-candidate="${c.name}"][data-dimension="${d.name}"]`); s[d.name] = sel.value; });
-      let sum = 0; cfg.dimensions.forEach(d => sum += parseInt(s[d.name]) * (d.weight / 100));
-      s.weighted = Math.round(sum * 100) / 10; scores[c.name] = s;
-    });
+    const skip = document.getElementById('skipCandidates')?.checked || false;
+    if (!skip) {
+      cfg.candidates.forEach(c => {
+        const s = {};
+        cfg.dimensions.forEach(d => {
+          const sel = document.querySelector(`select[data-candidate="${c.name}"][data-dimension="${d.name}"]`);
+          s[d.name] = sel?.value || '';
+        });
+        let sum = 0; cfg.dimensions.forEach(d => sum += parseInt(s[d.name]) * (d.weight / 100));
+        s.weighted = Math.round(sum * 100) / 10; scores[c.name] = s;
+      });
+    }
     const patterns = Array.from(document.querySelectorAll('#rulePatternSelect input:checked')).map(cb => cb.value);
     const digits = Array.from(document.querySelectorAll('#digitSelect input:checked')).map(cb => cb.value);
     const suffixes = Array.from(document.querySelectorAll('#suffixSelect input:checked')).map(cb => cb.value);
