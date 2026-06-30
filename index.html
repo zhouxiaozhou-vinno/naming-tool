@@ -450,7 +450,7 @@
     renderCandidates(); saveConfig();
   };
 
-   // ==================== 问卷模式 ====================
+  // ==================== 问卷模式 ====================
   function loadSurveyMode(jsonStr, lang) {
     let cfg;
     try {
@@ -692,18 +692,7 @@
 
     const combos = [];
     const needDigit = checkedPatterns.some(p => p.includes('数字'));
-    const needSuffix = checkedPatterns.some(p => p.includes('后缀'));
-    const needLetter = checkedPatterns.some(p => p.includes('功能字母'));
-
-    // 如果需要的库都为空，显示提示
-    if ((needDigit && checkedDigits.length === 0) || (needSuffix && checkedSuffixes.length === 0) || (needLetter && checkedLetters.length === 0)) {
-      const lang = (new URLSearchParams(location.search).get('lang')||'zh') === 'en' ? 'en' : 'zh';
-      const hint = lang === 'en' ? 'Please tick at least one digit/suffix/letter to view recommended combinations.' : '请勾选至少一项数字、后缀或功能字母以查看推荐组合。';
-      document.getElementById('comboExamples').innerHTML = `<p style="color:#64748b; font-size:14px;">${hint}</p>`;
-      return;
-    }
-
-    if (checkedPatterns.length === 0) {
+    if (needDigit && checkedDigits.length === 0) {
       document.getElementById('comboExamples').innerHTML = '';
       return;
     }
