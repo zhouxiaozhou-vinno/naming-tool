@@ -67,6 +67,7 @@
   const EMAILJS_SERVICE_ID = "service_lys1uko";
   const EMAILJS_TEMPLATE_ID = "template_0312enu";
   const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyeRYk3x6RhwIC-cbEMdecMuI8Hub1P-PxTD-y0LUxE652X0aH5DDv8Yq_5e5Re3wM5/exec";
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxYkXUWwopxpvAudeB4AWQd462dI7Xb2PIhJxXQ281AXX1RHKuGUXxkaUClYZhcL5Y6r_T_AB-HhnZ/pub?output=csv";
 
   // 默认配置（包含中英文双字段）
   const defaultConfig = {
@@ -453,7 +454,7 @@
     renderCandidates(); saveConfig();
   };
 
-  // ==================== CEO 报告生成器 ====================
+   // ==================== CEO 报告生成器（CSV 版本） ====================
   async function generateCEOReport() {
     const projectId = config.projectId;
     const output = document.getElementById('reportOutput');
@@ -461,14 +462,40 @@
     output.innerHTML = '<p>正在从 Google Sheets 拉取数据…</p>';
 
     try {
-      const resp = await fetch(`${GOOGLE_SCRIPT_URL}?projectId=${encodeURIComponent(projectId)}`);
-      const text = await resp.text();
-      let submissions = [];
-      try {
-        submissions = JSON.parse(text);
-      } catch (e) {
-        output.innerHTML = '<p style="color:red;">数据解析失败，请检查 Google Sheets 是否已发布为 CSV 或脚本是否正常运行。</p>';
+      const resp = await fetch(CSV_URL);
+      const csvText = await resp.text();
+
+      // 解析 CSV（支持字段内的逗号、引号）
+      const rows = parseCSV(csvText);
+      if (rows.length === 0) {
+        output.innerHTML = '<p>CSV 文件中没有数据。</p>';
         return;
+      }
+
+      // 筛选当前项目的数据
+      // Sheet 列顺序：时间戳, projectId, department, intuition, custom_name, custom_reason,
+      // navos_weighted, cynos_weighted, toris_weighted, navix_weighted, lumis_weighted,
+      // rule_patterns, digits, suffixes, letters, model_feedback, scores_json
+      const submissions = [];
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (row.length < 11) continue; // 至少要有加权分列
+        // 跳过表头行（检查第一列是否为“时间戳”等）
+        if (i === 0 && (row[0].includes('时间戳') || row[0].toLowerCase().includes('timestamp'))) continue;
+        // projectId 在第 1 列（索引 1）
+        if (row[1] !== projectId) continue;
+        submissions.push({
+          dept: row[2] || '',
+          intuition: row[3] || '',
+          scores: {
+            Navos: parseFloat(row[6]) || 0,
+            Cynos: parseFloat(row[7]) || 0,
+            Toris: parseFloat(row[8]) || 0,
+            Navix: parseFloat(row[9]) || 0,
+            Lumis: parseFloat(row[10]) || 0
+          },
+          custom: row[4] || ''
+        });
       }
 
       if (submissions.length === 0) {
@@ -477,39 +504,68 @@
       }
 
       const candidates = ['Navos', 'Cynos', 'Toris', 'Navix', 'Lumis'];
-      const rawData = submissions.map(row => ({
-        dept: row.department,
-        intuition: row.intuition,
-        scores: {
-          Navos: parseFloat(row.navos_weighted) || 0,
-          Cynos: parseFloat(row.cynos_weighted) || 0,
-          Toris: parseFloat(row.toris_weighted) || 0,
-          Navix: parseFloat(row.navix_weighted) || 0,
-          Lumis: parseFloat(row.lumis_weighted) || 0
-        },
-        custom: row.custom_name
-      }));
-
       const overallAvg = {};
       candidates.forEach(name => {
-        const scores = rawData.map(d => d.scores[name]).filter(s => s !== undefined);
+        const scores = submissions.map(d => d.scores[name]).filter(s => s !== undefined);
         overallAvg[name] = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
       });
 
       const sortedCandidates = [...candidates].sort((a, b) => overallAvg[b] - overallAvg[a]);
 
       let reportHTML = `<h3>📈 ${config.productLine} 命名评估报告</h3>`;
-      reportHTML += `<p><strong>项目 ID：</strong> ${projectId} | <strong>总提交数：</strong> ${rawData.length}</p>`;
+      reportHTML += `<p><strong>项目 ID：</strong> ${projectId} | <strong>总提交数：</strong> ${submissions.length}</p>`;
       reportHTML += `<table><thead><tr><th>排名</th><th>候选名</th><th>平均加权总分</th></tr></thead><tbody>`;
       sortedCandidates.forEach((name, idx) => {
         reportHTML += `<tr><td>${idx + 1}</td><td>${name}</td><td>${overallAvg[name]}</td></tr>`;
       });
       reportHTML += `</tbody></table>`;
       reportHTML += `<p style="margin-top:16px;"><strong>✅ 决策建议：</strong>首选 <strong>${sortedCandidates[0]}</strong>（平均分 ${overallAvg[sortedCandidates[0]]}）。`;
+      if (submissions.length === 1) {
+        reportHTML += `<p style="color:#888;">⚠️ 当前仅有 1 份提交，建议收集更多数据后再做决策。</p>`;
+      }
       output.innerHTML = reportHTML;
     } catch (err) {
       output.innerHTML = `<p style="color:red;">获取数据失败：${err.message}</p>`;
     }
+  }
+
+  // 简易 CSV 解析器（处理引号内的逗号和双引号转义）
+  function parseCSV(text) {
+    const rows = [];
+    const lines = text.split(/\r?\n/);
+    for (let line of lines) {
+      if (line.trim() === '') continue;
+      const cols = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+          if (ch === '"') {
+            if (i + 1 < line.length && line[i + 1] === '"') {
+              current += '"';
+              i++;
+            } else {
+              inQuotes = false;
+            }
+          } else {
+            current += ch;
+          }
+        } else {
+          if (ch === '"') {
+            inQuotes = true;
+          } else if (ch === ',') {
+            cols.push(current);
+            current = '';
+          } else {
+            current += ch;
+          }
+        }
+      }
+      cols.push(current);
+      rows.push(cols);
+    }
+    return rows;
   }
 
   // ==================== 问卷模式 ====================
