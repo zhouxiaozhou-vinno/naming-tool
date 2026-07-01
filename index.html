@@ -454,127 +454,127 @@ const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxYkXUWwopxpvA
     renderCandidates(); saveConfig();
   };
 
-     // ==================== CEO 报告生成器（CSV 重制版） ====================
-  async function generateCEOReport() {
-    const projectId = config.projectId;
-    const output = document.getElementById('reportOutput');
-    output.classList.remove('hidden');
-    output.innerHTML = '<p>正在从 Google Sheets 拉取数据…</p>';
+// ==================== CEO 报告生成器（CSV 最终版） ====================
+async function generateCEOReport() {
+  const projectId = config.projectId;
+  const output = document.getElementById('reportOutput');
+  output.classList.remove('hidden');
+  output.innerHTML = '<p>正在从 Google Sheets 拉取数据…</p>';
 
-    try {
-      const resp = await fetch(CSV_URL);
-      const csvText = await resp.text();
-      const rows = parseCSV(csvText);
+  try {
+    const resp = await fetch(CSV_URL);
+    const csvText = await resp.text();
+    const rows = parseCSV(csvText);
 
-      if (rows.length === 0) {
-        output.innerHTML = '<p>CSV 文件中没有数据。</p>';
-        return;
-      }
-
-      const submissions = [];
-
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        // 跳过表头
-        if (i === 0 && (row[0].includes('时间戳') || row[0].toLowerCase().includes('timestamp'))) continue;
-        // 只取当前项目的数据 (projectId 在第2列，索引 1)
-        if (row[1] !== projectId) continue;
-        
-        // 核心数据在最后一列 (scores_json)
-        const scoresJsonStr = row[row.length - 1];
-        if (!scoresJsonStr) continue;
-
-        try {
-          const allScores = JSON.parse(scoresJsonStr);
-          submissions.push({
-            dept: row[2] || '未知部门',
-            scores: allScores
-          });
-        } catch (e) {
-          console.warn('解析第 ' + i + ' 行 JSON 失败:', e);
-        }
-      }
-
-      if (submissions.length === 0) {
-        output.innerHTML = '<p>当前项目暂无提交数据。</p>';
-        return;
-      }
-
-      // 计算每个候选名的平均加权总分
-      const candidateStats = {};
-      submissions.forEach(sub => {
-        Object.keys(sub.scores).forEach(name => {
-          const s = sub.scores[name];
-          if (s && s.weighted !== undefined) {
-            if (!candidateStats[name]) {
-              candidateStats[name] = { total: 0, count: 0 };
-            }
-            candidateStats[name].total += parseFloat(s.weighted);
-            candidateStats[name].count += 1;
-          }
-        });
-      });
-
-      const sortedCandidates = Object.keys(candidateStats).map(name => ({
-        name: name,
-        avg: (candidateStats[name].total / candidateStats[name].count).toFixed(1)
-      })).sort((a, b) => b.avg - a.avg);
-
-      let reportHTML = `<h3>📈 ${config.productLine} 命名评估报告</h3>`;
-      reportHTML += `<p><strong>项目 ID：</strong> ${projectId} | <strong>总提交数：</strong> ${submissions.length}</p>`;
-      reportHTML += `<table><thead><tr><th>排名</th><th>候选名</th><th>平均加权总分</th></tr></thead><tbody>`;
-      sortedCandidates.forEach((c, idx) => {
-        reportHTML += `<tr><td>${idx + 1}</td><td>${c.name}</td><td>${c.avg}</td></tr>`;
-      });
-      reportHTML += `</tbody></table>`;
-      reportHTML += `<p style="margin-top:16px;"><strong>✅ 决策建议：</strong>首选 <strong>${sortedCandidates[0].name}</strong>（平均分 ${sortedCandidates[0].avg}）。`;
-      if (submissions.length === 1) {
-        reportHTML += `<p style="color:#888;">⚠️ 当前仅有 1 份提交，建议收集更多数据后再做决策。</p>`;
-      }
-      output.innerHTML = reportHTML;
-
-    } catch (err) {
-      output.innerHTML = `<p style="color:red;">获取数据失败：${err.message}</p>`;
+    if (rows.length === 0) {
+      output.innerHTML = '<p>CSV 文件中没有数据。</p>';
+      return;
     }
-  }
 
-  function parseCSV(text) {
-    const rows = [];
-    const lines = text.split(/\r?\n/);
-    for (let line of lines) {
-      if (line.trim() === '') continue;
-      const cols = [];
-      let current = '';
-      let inQuotes = false;
-      for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-        if (inQuotes) {
-          if (ch === '"') {
-            if (i + 1 < line.length && line[i + 1] === '"') {
-              current += '"';
-              i++;
-            } else {
-              inQuotes = false;
-            }
+    const submissions = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      // 跳过表头行（第一列为“时间戳”或“Timestamp”）
+      if (i === 0 && (row[0].includes('时间戳') || row[0].toLowerCase().includes('timestamp'))) continue;
+      // 只筛选当前项目的数据（第二列是 projectId）
+      if (row[1] !== projectId) continue;
+
+      // 关键：最后一列是 scores_json
+      const scoresJsonStr = row[row.length - 1];
+      if (!scoresJsonStr) continue;
+
+      try {
+        const allScores = JSON.parse(scoresJsonStr);
+        submissions.push({
+          dept: row[2] || '未知部门',
+          scores: allScores
+        });
+      } catch (e) {
+        console.warn('解析第 ' + i + ' 行 JSON 失败:', e);
+      }
+    }
+
+    if (submissions.length === 0) {
+      output.innerHTML = '<p>当前项目暂无提交数据。</p>';
+      return;
+    }
+
+    // 计算每个候选名的平均加权分
+    const candidateStats = {};
+    submissions.forEach(sub => {
+      Object.keys(sub.scores).forEach(name => {
+        const s = sub.scores[name];
+        if (s && s.weighted !== undefined) {
+          if (!candidateStats[name]) {
+            candidateStats[name] = { total: 0, count: 0 };
+          }
+          candidateStats[name].total += parseFloat(s.weighted);
+          candidateStats[name].count += 1;
+        }
+      });
+    });
+
+    const sortedCandidates = Object.keys(candidateStats).map(name => ({
+      name: name,
+      avg: (candidateStats[name].total / candidateStats[name].count).toFixed(1)
+    })).sort((a, b) => b.avg - a.avg);
+
+    let reportHTML = `<h3>📈 ${config.productLine} 命名评估报告</h3>`;
+    reportHTML += `<p><strong>项目 ID：</strong> ${projectId} | <strong>总提交数：</strong> ${submissions.length}</p>`;
+    reportHTML += `<table><thead><tr><th>排名</th><th>候选名</th><th>平均加权总分</th></tr></thead><tbody>`;
+    sortedCandidates.forEach((c, idx) => {
+      reportHTML += `<tr><td>${idx + 1}</td><td>${c.name}</td><td>${c.avg}</td></tr>`;
+    });
+    reportHTML += `</tbody></table>`;
+    reportHTML += `<p style="margin-top:16px;"><strong>✅ 决策建议：</strong>首选 <strong>${sortedCandidates[0].name}</strong>（平均分 ${sortedCandidates[0].avg}）。`;
+    if (submissions.length === 1) {
+      reportHTML += `<p style="color:#888;">⚠️ 当前仅有 1 份提交，建议收集更多数据后再做决策。</p>`;
+    }
+    output.innerHTML = reportHTML;
+
+  } catch (err) {
+    output.innerHTML = `<p style="color:red;">获取数据失败：${err.message}</p>`;
+  }
+}
+
+function parseCSV(text) {
+  const rows = [];
+  const lines = text.split(/\r?\n/);
+  for (let line of lines) {
+    if (line.trim() === '') continue;
+    const cols = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (i + 1 < line.length && line[i + 1] === '"') {
+            current += '"';
+            i++;
           } else {
-            current += ch;
+            inQuotes = false;
           }
         } else {
-          if (ch === '"') {
-            inQuotes = true;
-          } else if (ch === ',') {
-            cols.push(current);
-            current = '';
-          } else {
-            current += ch;
-          }
+          current += ch;
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === ',') {
+          cols.push(current);
+          current = '';
+        } else {
+          current += ch;
         }
       }
-      cols.push(current);
-      rows.push(cols);
     }
-    return rows;
+    cols.push(current);
+    rows.push(cols);
   }
+  return rows;
+}
 
   // ==================== 问卷模式 ====================
   function loadSurveyMode(jsonStr, lang) {
