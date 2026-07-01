@@ -54,6 +54,7 @@
     .delete-btn { background:#e74c3c; color:white; border:none; border-radius:6px; padding:2px 8px; cursor:pointer; }
     .skip-candidates-label { display:flex !important; align-items:center !important; gap:8px !important; margin-top:12px !important; }
     .skip-candidates-label input[type="checkbox"] { width:auto !important; margin:0 !important; }
+    .report-box { background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:20px; margin-top:10px; }
   </style>
 </head>
 <body>
@@ -61,12 +62,13 @@
 
 <script>
   const ADMIN_PASSWORD = "admin123";
-  // ========== 请替换成你自己的 EmailJS 三把钥匙 ==========
+  // 四个核心密钥（已替换为用户提供的实际值）
   const EMAILJS_PUBLIC_KEY = "SGWZZKBDK9xhn2jjo";
-  const EMAILJS_SERVICE_ID = "service_f0jecjn";
-  const EMAILJS_TEMPLATE_ID = "template_ddk8ga1";
-  // ======================================================
+  const EMAILJS_SERVICE_ID = "service_lys1uko";
+  const EMAILJS_TEMPLATE_ID = "template_0312enu";
+  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwg3hsmkAYsf0jQAawf03qhhxsVRrdyyCogZSBZcuHN1WZFaWN4eaAHVuDq3yzRhQ-b/exec";
 
+  // 默认配置（包含中英文双字段）
   const defaultConfig = {
     productLine: "Azolla",
     valueProp: "床旁诊断的指引者，医生的合作伙伴",
@@ -97,10 +99,15 @@
       customRuleText: "",
       recommendedCombos: ["Azolla 70 Pro"]
     },
-    teamOptions: ["研发","国内市场战略部","国内市场运营部","国际市场部","国际临床应用部","销售","区域/国家代理商","其他"]
+    teamOptions: ["研发","国内市场战略部","国内市场运营部","国际市场部","国际临床应用部","销售","区域/国家代理商","其他"],
+    projectId: "default"
   };
 
   let config = JSON.parse(localStorage.getItem('namingConfig')) || JSON.parse(JSON.stringify(defaultConfig));
+  if (!config.projectId || config.projectId === 'default') {
+    config.projectId = 'project_' + Date.now();
+    saveConfig();
+  }
   function saveConfig() { localStorage.setItem('namingConfig', JSON.stringify(config)); }
 
   const digitGroups = {
@@ -153,7 +160,7 @@
   }
   function doLogin() { if(document.getElementById('adminPass').value === ADMIN_PASSWORD) renderAdmin(); else document.getElementById('loginError').textContent = '密码错误'; }
 
-  // ==================== 管理面板 ====================
+  // ==================== 管理面板（包含 CEO 报告生成器） ====================
   function renderAdmin() {
     const allPatterns = ["命名+数字+后缀","命名+数字","命名+后缀","命名+数字+功能字母","命名+功能字母","命名+功能字母+后缀","命名"];
     const allChecked = allPatterns.every(p => config.modelRule.rulePatterns.includes(p));
@@ -168,6 +175,7 @@
         <label>命名意象（中文）</label><textarea id="namingImagery">${config.namingImagery}</textarea>
         <label>命名意象 Naming Imagery (English) [可选]</label><textarea id="namingImageryEn">${config.namingImageryEn||''}</textarea>
         <label>竞品参考</label><input id="competitors" value="${config.competitors}">
+        <label>项目 ID（自动生成，用于数据隔离）</label><input id="projectId" value="${config.projectId}" readonly style="background:#f1f5f9;">
       </div>
       <div class="card"><h2>✨ 候选名管理</h2>
         <div id="candidatesContainer"></div>
@@ -193,6 +201,12 @@
       <div class="card"><h2>👥 团队职能</h2><textarea id="teamOptions">${config.teamOptions.join(', ')}</textarea></div>
       <button class="btn gold" onclick="saveAndGenerate()" style="width:100%; padding:16px; font-size:18px;">🚀 生成问卷链接</button>
       <div id="surveyLinks" class="card hidden"><h2>🔗 问卷链接</h2><p>中文：<a id="linkZh" target="_blank"></a></p><p>英文：<a id="linkEn" target="_blank"></a></p></div>
+      <div class="card" style="margin-top:20px;">
+        <h2>📊 CEO 报告生成器</h2>
+        <p>从 Google Sheets 自动拉取当前项目（<strong>${config.projectId}</strong>）的所有提交数据，一键生成 CEO 报告。</p>
+        <button class="btn gold" onclick="generateCEOReport()">📈 生成 CEO 报告</button>
+        <div id="reportOutput" class="report-box hidden" style="margin-top:16px;"></div>
+      </div>
     `;
     document.getElementById('customRuleText').addEventListener('change', function() { config.modelRule.customRuleText = this.value; saveConfig(); });
     renderCandidates(); renderDims(); renderDigitLib(); renderSuffixLib(); renderLetterLib(); autoGenerateCombos();
@@ -242,7 +256,6 @@
     if(btn) btn.textContent = allSel ? '取消' : '全选';
   }
 
-  // ==================== 数字库（完整） ====================
   function renderDigitLib() {
     let h = '';
     const allVals = Object.values(digitGroups).flatMap(g=>g.values);
@@ -286,7 +299,6 @@
     renderDigitLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newDigit').value = '';
   };
 
-  // ==================== 后缀库（完整） ====================
   function renderSuffixLib() {
     let h = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelSuffixes()">${suffixPool.every(s=>config.modelRule.suffixes.includes(s))?'取消':'全选'}</button>`;
     suffixPool.forEach(s => h += `<label><input type="checkbox" value="${s}" ${config.modelRule.suffixes.includes(s)?'checked':''} onchange="toggleSuffix(this)"> ${s}</label>`);
@@ -322,7 +334,6 @@
     renderSuffixLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newSuffix').value = '';
   };
 
-  // ==================== 字母库（完整） ====================
   function renderLetterLib() {
     let h = `<div class="option-group"><button class="btn outline sm" onclick="toggleSelLetters()">${letterPool.every(l=>config.modelRule.funcLetters.includes(l))?'取消':'全选'}</button>`;
     letterPool.forEach(l => h += `<label><input type="checkbox" value="${l}" ${config.modelRule.funcLetters.includes(l)?'checked':''} onchange="toggleLetter(this)"> ${l}</label>`);
@@ -358,7 +369,7 @@
     renderLetterLib(); autoGenerateCombos(); saveConfig(); document.getElementById('newLetter').value = '';
   };
 
-  // ==================== 自动生成推荐组合 ====================
+  // ==================== 自动生成推荐组合（修正版） ====================
   function autoGenerateCombos() {
     const patterns = config.modelRule.rulePatterns;
     const digits = config.modelRule.digits;
@@ -366,19 +377,11 @@
     const letters = config.modelRule.funcLetters;
     const combos = [];
 
-    const needDigit = patterns.some(p => p.includes('数字'));
-    if (needDigit && digits.length === 0) {
-      config.modelRule.recommendedCombos = [];
-      if(document.getElementById('recommendedCombos')) document.getElementById('recommendedCombos').value = '';
-      saveConfig();
-      return;
-    }
-
     const allGroupVals = Object.values(digitGroups).flatMap(g => g.values);
     const series = ['ones','tens','hundreds','thousands'].map(g => digits.find(d => digitGroups[g].values.includes(d))).filter(Boolean);
     const custom = digits.filter(d => !allGroupVals.includes(d));
     const samples = [...new Set([...series, ...custom])];
-    if(samples.length === 0) samples.push('70');
+    if (samples.length === 0) samples.push('70');
 
     const sfx = suffixes.length > 0 ? suffixes[0] : null;
     const ltr = letters.length > 0 ? letters[0] : null;
@@ -449,6 +452,65 @@
     config.candidates = JSON.parse(data.choices[0].message.content);
     renderCandidates(); saveConfig();
   };
+
+  // ==================== CEO 报告生成器 ====================
+  async function generateCEOReport() {
+    const projectId = config.projectId;
+    const output = document.getElementById('reportOutput');
+    output.classList.remove('hidden');
+    output.innerHTML = '<p>正在从 Google Sheets 拉取数据…</p>';
+
+    try {
+      const resp = await fetch(`${GOOGLE_SCRIPT_URL}?projectId=${encodeURIComponent(projectId)}`);
+      const text = await resp.text();
+      let submissions = [];
+      try {
+        submissions = JSON.parse(text);
+      } catch (e) {
+        output.innerHTML = '<p style="color:red;">数据解析失败，请检查 Google Sheets 是否已发布为 CSV 或脚本是否正常运行。</p>';
+        return;
+      }
+
+      if (submissions.length === 0) {
+        output.innerHTML = '<p>当前项目暂无提交数据。</p>';
+        return;
+      }
+
+      const candidates = ['Navos', 'Cynos', 'Toris', 'Navix', 'Lumis'];
+      const rawData = submissions.map(row => ({
+        dept: row.department,
+        intuition: row.intuition,
+        scores: {
+          Navos: parseFloat(row.navos_weighted) || 0,
+          Cynos: parseFloat(row.cynos_weighted) || 0,
+          Toris: parseFloat(row.toris_weighted) || 0,
+          Navix: parseFloat(row.navix_weighted) || 0,
+          Lumis: parseFloat(row.lumis_weighted) || 0
+        },
+        custom: row.custom_name
+      }));
+
+      const overallAvg = {};
+      candidates.forEach(name => {
+        const scores = rawData.map(d => d.scores[name]).filter(s => s !== undefined);
+        overallAvg[name] = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+      });
+
+      const sortedCandidates = [...candidates].sort((a, b) => overallAvg[b] - overallAvg[a]);
+
+      let reportHTML = `<h3>📈 ${config.productLine} 命名评估报告</h3>`;
+      reportHTML += `<p><strong>项目 ID：</strong> ${projectId} | <strong>总提交数：</strong> ${rawData.length}</p>`;
+      reportHTML += `<table><thead><tr><th>排名</th><th>候选名</th><th>平均加权总分</th></tr></thead><tbody>`;
+      sortedCandidates.forEach((name, idx) => {
+        reportHTML += `<tr><td>${idx + 1}</td><td>${name}</td><td>${overallAvg[name]}</td></tr>`;
+      });
+      reportHTML += `</tbody></table>`;
+      reportHTML += `<p style="margin-top:16px;"><strong>✅ 决策建议：</strong>首选 <strong>${sortedCandidates[0]}</strong>（平均分 ${overallAvg[sortedCandidates[0]]}）。`;
+      output.innerHTML = reportHTML;
+    } catch (err) {
+      output.innerHTML = `<p style="color:red;">获取数据失败：${err.message}</p>`;
+    }
+  }
 
   // ==================== 问卷模式 ====================
   function loadSurveyMode(jsonStr, lang) {
@@ -567,7 +629,7 @@
 
     renderSurveySelections(cfg, isZh, T, tGroup);
 
-    // 推荐组合动态更新
+    // 推荐组合动态更新（核心，修正版）
     const updateCombos = () => {
       const customName = document.getElementById('customName').value.trim();
       const intuition = document.getElementById('intuition').value;
@@ -692,11 +754,7 @@
     const checkedPatterns = Array.from(document.querySelectorAll('#rulePatternSelect input:checked')).map(cb => cb.value);
 
     const combos = [];
-    const needDigit = checkedPatterns.some(p => p.includes('数字'));
-    if (needDigit && checkedDigits.length === 0) {
-      document.getElementById('comboExamples').innerHTML = '';
-      return;
-    }
+    // 移除早期清空逻辑，每个模式独立判断
 
     const getFirst = (group) => checkedDigits.find(d => digitGroups[group].values.includes(d));
     const series = ['ones', 'tens', 'hundreds', 'thousands'].map(g => getFirst(g)).filter(Boolean);
@@ -771,7 +829,9 @@
     const digits = Array.from(document.querySelectorAll('#digitSelect input:checked')).map(cb => cb.value);
     const suffixes = Array.from(document.querySelectorAll('#suffixSelect input:checked')).map(cb => cb.value);
     const letters = Array.from(document.querySelectorAll('#letterSelect input:checked')).map(cb => cb.value);
+
     const templateParams = {
+      projectId: cfg.projectId || '',
       department: dept, intuition: document.getElementById('intuition').value,
       custom_name: document.getElementById('customName').value, custom_reason: document.getElementById('customReason').value,
       navos_weighted: scores['Navos']?.weighted || '', cynos_weighted: scores['Cynos']?.weighted || '',
@@ -780,6 +840,8 @@
       digits: digits.join(', '), suffixes: suffixes.join(', '), letters: letters.join(', '),
       model_feedback: document.getElementById('modelFeedback').value, scores_json: JSON.stringify(scores)
     };
+
+    // 发送到 EmailJS
     fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -790,8 +852,25 @@
         template_params: templateParams
       })
     })
-      .then(() => showToast('提交成功！'))
-      .catch(() => { document.getElementById('fallbackBox').style.display = 'block'; });
+    .then(() => {
+      showToast('提交成功！');
+      // 同时发送到 Google Sheets
+      return fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(templateParams)
+      });
+    })
+    .catch(() => {
+      fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(templateParams)
+      });
+      document.getElementById('fallbackBox').style.display = 'block';
+    });
   }
   function copyFallback() { const ta = document.getElementById('fallbackData'); ta.select(); document.execCommand('copy'); showToast('已复制'); }
   function showToast(msg) { const t = document.getElementById('toast'); if (t) { t.textContent = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3000); } }
