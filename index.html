@@ -454,7 +454,7 @@ const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxYkXUWwopxpvA
     renderCandidates(); saveConfig();
   };
 
-   // ==================== CEO 报告生成器（CSV 版本） ====================
+     // ==================== CEO 报告生成器（CSV 重制版） ====================
   async function generateCEOReport() {
     const projectId = config.projectId;
     const output = document.getElementById('reportOutput');
@@ -464,38 +464,35 @@ const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxYkXUWwopxpvA
     try {
       const resp = await fetch(CSV_URL);
       const csvText = await resp.text();
-
-      // 解析 CSV（支持字段内的逗号、引号）
       const rows = parseCSV(csvText);
+
       if (rows.length === 0) {
         output.innerHTML = '<p>CSV 文件中没有数据。</p>';
         return;
       }
 
-      // 筛选当前项目的数据
-      // Sheet 列顺序：时间戳, projectId, department, intuition, custom_name, custom_reason,
-      // navos_weighted, cynos_weighted, toris_weighted, navix_weighted, lumis_weighted,
-      // rule_patterns, digits, suffixes, letters, model_feedback, scores_json
       const submissions = [];
+
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        if (row.length < 11) continue; // 至少要有加权分列
-        // 跳过表头行（检查第一列是否为“时间戳”等）
+        // 跳过表头
         if (i === 0 && (row[0].includes('时间戳') || row[0].toLowerCase().includes('timestamp'))) continue;
-        // projectId 在第 1 列（索引 1）
+        // 只取当前项目的数据 (projectId 在第2列，索引 1)
         if (row[1] !== projectId) continue;
-        submissions.push({
-          dept: row[2] || '',
-          intuition: row[3] || '',
-          scores: {
-            Navos: parseFloat(row[6]) || 0,
-            Cynos: parseFloat(row[7]) || 0,
-            Toris: parseFloat(row[8]) || 0,
-            Navix: parseFloat(row[9]) || 0,
-            Lumis: parseFloat(row[10]) || 0
-          },
-          custom: row[4] || ''
-        });
+        
+        // 核心数据在最后一列 (scores_json)
+        const scoresJsonStr = row[row.length - 1];
+        if (!scoresJsonStr) continue;
+
+        try {
+          const allScores = JSON.parse(scoresJsonStr);
+          submissions.push({
+            dept: row[2] || '未知部门',
+            scores: allScores
+          });
+        } catch (e) {
+          console.warn('解析第 ' + i + ' 行 JSON 失败:', e);
+        }
       }
 
       if (submissions.length === 0) {
@@ -503,33 +500,44 @@ const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxYkXUWwopxpvA
         return;
       }
 
-      const candidates = ['Navos', 'Cynos', 'Toris', 'Navix', 'Lumis'];
-      const overallAvg = {};
-      candidates.forEach(name => {
-        const scores = submissions.map(d => d.scores[name]).filter(s => s !== undefined);
-        overallAvg[name] = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+      // 计算每个候选名的平均加权总分
+      const candidateStats = {};
+      submissions.forEach(sub => {
+        Object.keys(sub.scores).forEach(name => {
+          const s = sub.scores[name];
+          if (s && s.weighted !== undefined) {
+            if (!candidateStats[name]) {
+              candidateStats[name] = { total: 0, count: 0 };
+            }
+            candidateStats[name].total += parseFloat(s.weighted);
+            candidateStats[name].count += 1;
+          }
+        });
       });
 
-      const sortedCandidates = [...candidates].sort((a, b) => overallAvg[b] - overallAvg[a]);
+      const sortedCandidates = Object.keys(candidateStats).map(name => ({
+        name: name,
+        avg: (candidateStats[name].total / candidateStats[name].count).toFixed(1)
+      })).sort((a, b) => b.avg - a.avg);
 
       let reportHTML = `<h3>📈 ${config.productLine} 命名评估报告</h3>`;
       reportHTML += `<p><strong>项目 ID：</strong> ${projectId} | <strong>总提交数：</strong> ${submissions.length}</p>`;
       reportHTML += `<table><thead><tr><th>排名</th><th>候选名</th><th>平均加权总分</th></tr></thead><tbody>`;
-      sortedCandidates.forEach((name, idx) => {
-        reportHTML += `<tr><td>${idx + 1}</td><td>${name}</td><td>${overallAvg[name]}</td></tr>`;
+      sortedCandidates.forEach((c, idx) => {
+        reportHTML += `<tr><td>${idx + 1}</td><td>${c.name}</td><td>${c.avg}</td></tr>`;
       });
       reportHTML += `</tbody></table>`;
-      reportHTML += `<p style="margin-top:16px;"><strong>✅ 决策建议：</strong>首选 <strong>${sortedCandidates[0]}</strong>（平均分 ${overallAvg[sortedCandidates[0]]}）。`;
+      reportHTML += `<p style="margin-top:16px;"><strong>✅ 决策建议：</strong>首选 <strong>${sortedCandidates[0].name}</strong>（平均分 ${sortedCandidates[0].avg}）。`;
       if (submissions.length === 1) {
         reportHTML += `<p style="color:#888;">⚠️ 当前仅有 1 份提交，建议收集更多数据后再做决策。</p>`;
       }
       output.innerHTML = reportHTML;
+
     } catch (err) {
       output.innerHTML = `<p style="color:red;">获取数据失败：${err.message}</p>`;
     }
   }
 
-  // 简易 CSV 解析器（处理引号内的逗号和双引号转义）
   function parseCSV(text) {
     const rows = [];
     const lines = text.split(/\r?\n/);
