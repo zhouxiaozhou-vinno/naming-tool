@@ -241,6 +241,8 @@
     saveConfig();
   }
   function saveConfig() { localStorage.setItem('namingConfig', JSON.stringify(config)); }
+  saveProjectToLibrary();   // 新增这一行
+}
 
   const digitGroups = {
     ones:   { label: "个位数", values: ["1","2","3","4","5","6","7","8","9"] },
@@ -298,6 +300,16 @@
     const allChecked = allPatterns.every(p => config.modelRule.rulePatterns.includes(p));
     document.getElementById('app').innerHTML = `
       <div class="header"><h1>⚙️ VINNO 命名评估系统</h1></div>
+      <div class="card" style="background:#f8fafc;">
+        <h2>📁 项目管理</h2>
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <span style="font-weight:600;">当前项目：</span>
+          <span style="background:#eef2ff; padding:6px 16px; border-radius:20px; font-family:monospace;">${config.projectId}</span>
+          <span style="color:#666;">（${config.productLine}）</span>
+          <button class="btn gold sm" onclick="createNewProject()">＋ 新建项目</button>
+        </div>
+        <div id="projectList" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+      </div>
       <div class="card"><h2>📋 产品基本信息</h2>
         <label>产品线名称</label><input id="productLine" value="${config.productLine}">
         <label>价值主张（中文）</label><input id="valueProp" value="${config.valueProp}">
@@ -342,6 +354,7 @@
     `;
     document.getElementById('customRuleText').addEventListener('change', function() { config.modelRule.customRuleText = this.value; saveConfig(); });
     renderCandidates(); renderDims(); renderDigitLib(); renderSuffixLib(); renderLetterLib(); autoGenerateCombos();
+    renderProjectList(); 
   }
 
   function renderCandidates() {
@@ -536,7 +549,60 @@
     saveConfig();
   }
 
-  function saveAndGenerate() {
+    function createNewProject() {
+    if (!confirm('确定要新建项目吗？当前未保存的修改将丢失。建议先保存。')) return;
+    const newId = 'project_' + Date.now();
+    config = JSON.parse(JSON.stringify(defaultConfig));
+    config.projectId = newId;
+    saveConfig();
+    location.reload();
+  }
+
+  function saveProjectToLibrary() {
+    const lib = JSON.parse(localStorage.getItem('projectLibrary') || '{}');
+    lib[config.projectId] = {
+      id: config.projectId,
+      productLine: config.productLine,
+      updatedAt: new Date().toISOString()
+    };
+    localStorage.setItem('projectLibrary', JSON.stringify(lib));
+  }
+
+  function switchProject(projectId) {
+    if (!confirm('切换到项目 ' + projectId + '？当前未保存修改将丢失。')) return;
+    const lib = JSON.parse(localStorage.getItem('projectLibrary') || '{}');
+    if (lib[projectId]) {
+      localStorage.setItem('namingConfig', JSON.stringify(lib[projectId].fullConfig));
+      location.reload();
+    }
+  }
+
+  function deleteProject(projectId) {
+    if (!confirm('永久删除项目 ' + projectId + '？此操作不可恢复。')) return;
+    const lib = JSON.parse(localStorage.getItem('projectLibrary') || '{}');
+    delete lib[projectId];
+    localStorage.setItem('projectLibrary', JSON.stringify(lib));
+    renderProjectList();
+  }
+
+  function renderProjectList() {
+    const lib = JSON.parse(localStorage.getItem('projectLibrary') || '{}');
+    const container = document.getElementById('projectList');
+    if (!container) return;
+    const entries = Object.values(lib).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt));
+    if (entries.length === 0) {
+      container.innerHTML = '<span style="color:#888;">暂无已保存的项目</span>';
+      return;
+    }
+    container.innerHTML = entries.map(p => `
+      <div style="background:white; border:1px solid var(--border); border-radius:8px; padding:8px 14px; display:flex; align-items:center; gap:8px;">
+        <span style="font-weight:600;">${p.productLine || '未命名'}</span>
+        <span style="color:#888; font-size:12px;">${p.id}</span>
+        <button class="btn sm outline" onclick="switchProject('${p.id}')">切换</button>
+        <button class="btn sm danger" onclick="deleteProject('${p.id}')">删除</button>
+      </div>
+    `).join('');
+  }
     const patterns = config.modelRule.rulePatterns;
     if (patterns.some(p=>p.includes('数字')) && config.modelRule.digits.length===0)
       return alert('您勾选了需要数字的规则模式，但未选择任何数字。请至少勾选一项数字档位库中的数字。');
