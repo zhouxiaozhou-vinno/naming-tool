@@ -56,6 +56,7 @@
     .skip-candidates-label input[type="checkbox"] { width:auto !important; margin:0 !important; }
     .report-box { background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:20px; margin-top:10px; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <div class="container" id="app"></div>
@@ -454,127 +455,230 @@ const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxYkXUWwopxpvA
     renderCandidates(); saveConfig();
   };
 
-// ==================== CEO 报告生成器（CSV 最终版） ====================
-async function generateCEOReport() {
-  const projectId = config.projectId;
-  const output = document.getElementById('reportOutput');
-  output.classList.remove('hidden');
-  output.innerHTML = '<p>正在从 Google Sheets 拉取数据…</p>';
+  // ==================== CEO 报告生成器（集成精美报告 + 导出 PDF） ====================
+  async function generateCEOReport() {
+    const projectId = config.projectId;
+    const output = document.getElementById('reportOutput');
+    output.classList.remove('hidden');
+    output.innerHTML = '<p style="text-align:center;padding:40px;">正在从 Google Sheets 拉取最新数据…</p>';
 
-  try {
-    const resp = await fetch(CSV_URL);
-    const csvText = await resp.text();
-    const rows = parseCSV(csvText);
-
-    if (rows.length === 0) {
-      output.innerHTML = '<p>CSV 文件中没有数据。</p>';
-      return;
-    }
-
-    const submissions = [];
-
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      // 跳过表头行（第一列为“时间戳”或“Timestamp”）
-      if (i === 0 && (row[0].includes('时间戳') || row[0].toLowerCase().includes('timestamp'))) continue;
-      // 只筛选当前项目的数据（第二列是 projectId）
-      if (row[1] !== projectId) continue;
-
-      // 关键：最后一列是 scores_json
-      const scoresJsonStr = row[row.length - 1];
-      if (!scoresJsonStr) continue;
-
-      try {
-        const allScores = JSON.parse(scoresJsonStr);
-        submissions.push({
-          dept: row[2] || '未知部门',
-          scores: allScores
-        });
-      } catch (e) {
-        console.warn('解析第 ' + i + ' 行 JSON 失败:', e);
+    try {
+      // 1. 获取 CSV 数据
+      const resp = await fetch(CSV_URL);
+      const csvText = await resp.text();
+      const allRows = parseCSV(csvText);
+      if (allRows.length === 0) {
+        output.innerHTML = '<p>CSV 文件中没有数据。</p>';
+        return;
       }
-    }
 
-    if (submissions.length === 0) {
-      output.innerHTML = '<p>当前项目暂无提交数据。</p>';
-      return;
-    }
+      // 2. 解析提交数据
+      let startIndex = 0;
+      if (allRows[0][0].includes('时间戳') || allRows[0][0].toLowerCase().includes('timestamp')) {
+        startIndex = 1;
+      }
 
-    // 计算每个候选名的平均加权分
-    const candidateStats = {};
-    submissions.forEach(sub => {
-      Object.keys(sub.scores).forEach(name => {
-        const s = sub.scores[name];
-        if (s && s.weighted !== undefined) {
-          if (!candidateStats[name]) {
-            candidateStats[name] = { total: 0, count: 0 };
+      const rawData = [];
+      const candidateSet = new Set();
+      for (let i = startIndex; i < allRows.length; i++) {
+        const row = allRows[i];
+        if (row.length < 6) continue;
+        if ((row[1] || '').trim() !== projectId) continue;
+
+        const dept = (row[2] || '未知').trim();
+        const intuition = (row[3] || '').trim();
+        const customName = (row[4] || '').trim();
+        const customReason = (row[5] || '').trim();
+        const scoresJsonStr = row[row.length - 1];
+        if (!scoresJsonStr) continue;
+
+        let scoresObj;
+        try { scoresObj = JSON.parse(scoresJsonStr); } catch (e) { continue; }
+
+        const scores = {};
+        for (let name in scoresObj) {
+          const w = parseFloat(scoresObj[name].weighted);
+          if (!isNaN(w)) {
+            scores[name.trim()] = w;
+            candidateSet.add(name.trim());
           }
-          candidateStats[name].total += parseFloat(s.weighted);
-          candidateStats[name].count += 1;
+        }
+        if (Object.keys(scores).length === 0) continue;
+
+        rawData.push({ dept, intuition, scores, custom: customName, customReason, rawScores: scoresObj });
+      }
+
+      // 统一部门英文名
+      rawData.forEach(d => {
+        if (d.dept === 'International Clinical Applications') d.dept = '国际临床应用部';
+        if (d.dept === 'International Market') d.dept = '国际市场部';
+      });
+
+      const candidates = Array.from(candidateSet).sort();
+      if (candidates.length === 0) {
+        output.innerHTML = '<p>当前项目暂无提交数据。</p>';
+        return;
+      }
+
+      const colorPool = ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#ec4899','#06b6d4','#f97316'];
+      const colorMap = {};
+      candidates.forEach((n, i) => colorMap[n] = colorPool[i % colorPool.length]);
+
+      const dimensionInfo = [
+        { key: '战略匹配度', weight: 20 },{ key: '记忆度', weight: 15 },{ key: '发音友好度', weight: 15 },
+        { key: '视觉美观度', weight: 10 },{ key: '语义联想', weight: 15 },{ key: '品牌一致性', weight: 10 },
+        { key: '延展性', weight: 10 },{ key: '风险控制', weight: 5 }
+      ];
+
+      // 3. 计算指标
+      const overallAvg = {};
+      candidates.forEach(name => {
+        const list = rawData.map(d => d.scores[name]).filter(s => s !== undefined);
+        overallAvg[name] = list.length ? (list.reduce((a,b)=>a+b,0) / list.length).toFixed(1) : null;
+      });
+      const sorted = candidates.filter(n => overallAvg[n] !== null).sort((a,b)=> parseFloat(overallAvg[b])-parseFloat(overallAvg[a]));
+
+      const deptGroups = {};
+      rawData.forEach(d => {
+        if (!deptGroups[d.dept]) deptGroups[d.dept] = [];
+        deptGroups[d.dept].push(d);
+      });
+      const deptLabels = Object.keys(deptGroups);
+
+      const intuitionCount = {};
+      rawData.forEach(d => {
+        if (d.intuition && d.intuition !== 'custom') intuitionCount[d.intuition] = (intuitionCount[d.intuition]||0)+1;
+        else if (d.intuition === 'custom') intuitionCount['自定义'] = (intuitionCount['自定义']||0)+1;
+      });
+
+      const dimTotals = {}, dimCounts = {};
+      candidates.forEach(n => { dimTotals[n]={}; dimCounts[n]={}; dimensionInfo.forEach(d=>{ dimTotals[n][d.key]=0; dimCounts[n][d.key]=0; }); });
+      rawData.forEach(e => {
+        const rs = e.rawScores;
+        for (let name in rs) {
+          const trimName = name.trim();
+          if (!candidates.includes(trimName)) continue;
+          const dims = rs[name];
+          dimensionInfo.forEach(dim => {
+            const v = parseFloat(dims[dim.key]);
+            if (!isNaN(v)) { dimTotals[trimName][dim.key] += v; dimCounts[trimName][dim.key] += 1; }
+          });
         }
       });
-    });
+      const dimAvg = {};
+      candidates.forEach(n => {
+        dimAvg[n] = {};
+        dimensionInfo.forEach(dim => dimAvg[n][dim.key] = dimCounts[n][dim.key] ? (dimTotals[n][dim.key]/dimCounts[n][dim.key]).toFixed(1) : '-');
+      });
 
-    const sortedCandidates = Object.keys(candidateStats).map(name => ({
-      name: name,
-      avg: (candidateStats[name].total / candidateStats[name].count).toFixed(1)
-    })).sort((a, b) => b.avg - a.avg);
+      const customEntries = rawData.filter(d => d.custom);
 
-    let reportHTML = `<h3>📈 ${config.productLine} 命名评估报告</h3>`;
-    reportHTML += `<p><strong>项目 ID：</strong> ${projectId} | <strong>总提交数：</strong> ${submissions.length}</p>`;
-    reportHTML += `<table><thead><tr><th>排名</th><th>候选名</th><th>平均加权总分</th></tr></thead><tbody>`;
-    sortedCandidates.forEach((c, idx) => {
-      reportHTML += `<tr><td>${idx + 1}</td><td>${c.name}</td><td>${c.avg}</td></tr>`;
-    });
-    reportHTML += `</tbody></table>`;
-    reportHTML += `<p style="margin-top:16px;"><strong>✅ 决策建议：</strong>首选 <strong>${sortedCandidates[0].name}</strong>（平均分 ${sortedCandidates[0].avg}）。`;
-    if (submissions.length === 1) {
-      reportHTML += `<p style="color:#888;">⚠️ 当前仅有 1 份提交，建议收集更多数据后再做决策。</p>`;
+      // 4. 构建报告 HTML（包含导出按钮）
+      let html = `
+        <div style="text-align:right;margin-bottom:10px;">
+          <button onclick="window.print()" style="padding:10px 24px; background:#1e3a5f; color:white; border:none; border-radius:8px; font-size:14px; cursor:pointer;">🖨️ 导出 / 打印 PDF</button>
+          <p style="font-size:12px;color:#888;">点击后在打印对话框中选择“另存为PDF”即可保存。</p>
+        </div>
+        <div class="summary-box" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:24px;">
+          <div class="summary-item"><div class="value">${rawData.length}</div><div class="label">总提交数</div></div>
+          <div class="summary-item"><div class="value">${sorted[0]}</div><div class="label">最高分候选名</div></div>
+          <div class="summary-item"><div class="value">${overallAvg[sorted[0]]}</div><div class="label">最高平均分</div></div>
+          <div class="summary-item"><div class="value">${new Set(rawData.map(d=>d.dept)).size}</div><div class="label">参与部门数</div></div>
+        </div>
+
+        <h3>🏆 总体加权总分排名</h3>
+        <table><thead><tr><th>排名</th><th>候选名</th><th>平均加权总分</th><th>最高分</th><th>最低分</th></tr></thead><tbody>
+          ${sorted.map((n,i)=>{
+            const list=rawData.map(d=>d.scores[n]).filter(s=>s!==undefined);
+            return `<tr class="${i===0?'highlight':''}"><td>${i+1}</td><td style="font-weight:700;">${n}</td><td>${overallAvg[n]}</td><td>${Math.max(...list)}</td><td>${Math.min(...list)}</td></tr>`;
+          }).join('')}
+        </tbody></table>
+        <div class="chart-container" style="height:350px;margin:20px 0;"><canvas id="overallChart"></canvas></div>
+
+        <h3>🧩 部门偏好分析</h3>
+        <div class="chart-container" style="height:350px;"><canvas id="deptChart"></canvas></div>
+        <table><thead><tr><th>部门 (样本数)</th>${candidates.map(n=>`<th>${n}</th>`).join('')}</tr></thead><tbody>
+          ${deptLabels.map(dept=>`<tr><td>${dept} (${deptGroups[dept].length})</td>${candidates.map(n=>{
+            const s=deptGroups[dept].map(d=>d.scores[n]).filter(v=>v!==undefined);
+            return `<td>${s.length?(s.reduce((a,b)=>a+b,0)/s.length).toFixed(1):'-'}</td>`;
+          }).join('')}</tr>`).join('')}
+        </tbody></table>
+
+        <h3>💭 直觉倾向分布</h3>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;">
+          <table style="flex:1;min-width:200px;"><thead><tr><th>名字</th><th>次数</th></tr></thead><tbody>
+            ${Object.entries(intuitionCount).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('')}
+          </tbody></table>
+          <div class="chart-container" style="flex:1;min-width:200px;height:250px;"><canvas id="intuitionChart"></canvas></div>
+        </div>
+
+        <h3>✍️ 自定义命名建议</h3>
+        ${customEntries.length ? customEntries.map(d=>`<div class="custom-name-box"><strong>${d.custom}</strong> (${d.dept}) ${d.customReason?'- '+d.customReason:''}</div>`).join('') : '<p>无</p>'}
+
+        <h3>🔍 关键维度平均分</h3>
+        <div class="chart-container" style="height:350px;"><canvas id="dimensionChart"></canvas></div>
+        <table><thead><tr><th>维度 (权重)</th>${candidates.map(n=>`<th>${n}</th>`).join('')}</tr></thead><tbody>
+          ${dimensionInfo.map(dim=>`<tr><td>${dim.key} (${dim.weight}%)</td>${candidates.map(n=>`<td>${dimAvg[n][dim.key]}</td>`).join('')}</tr>`).join('')}
+        </tbody></table>
+
+        <div style="background:#fef9e7;border-left:6px solid #c9a74b;padding:20px;border-radius:12px;margin-top:20px;">
+          <h3>✅ 决策建议</h3>
+          <p><strong>首选推荐：${sorted[0]}</strong>（平均分 ${overallAvg[sorted[0]]}）。${Object.keys(intuitionCount).length ? '直觉最受欢迎：'+Object.entries(intuitionCount).sort((a,b)=>b[1]-a[1])[0][0] + '。' : ''}请结合部门评分和维度表现做最终决策。</p>
+        </div>
+      `;
+
+      output.innerHTML = html;
+
+      // 5. 绘制图表（必须等 DOM 更新后）
+      setTimeout(() => {
+        new Chart(document.getElementById('overallChart'), {
+          type: 'bar', data: { labels: candidates, datasets: [{ label: '平均分', data: candidates.map(n=>overallAvg[n]), backgroundColor: candidates.map(n=>colorMap[n]), borderRadius:8 }] },
+          options: { responsive:true, maintainAspectRatio:false, scales:{y:{beginAtZero:true, max:100}} }
+        });
+        new Chart(document.getElementById('deptChart'), {
+          type: 'bar', data: { labels: deptLabels, datasets: candidates.map(n=>({ label:n, data: deptLabels.map(d=>{
+            const arr=deptGroups[d].map(x=>x.scores[n]).filter(v=>v!==undefined);
+            return arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1) : 0;
+          }), backgroundColor:colorMap[n] })) },
+          options: { responsive:true, maintainAspectRatio:false, scales:{y:{beginAtZero:true}} }
+        });
+        new Chart(document.getElementById('intuitionChart'), {
+          type: 'doughnut', data: { labels: Object.keys(intuitionCount), datasets: [{ data: Object.values(intuitionCount), backgroundColor: Object.keys(intuitionCount).map((_,i)=>colorPool[i%colorPool.length]) }] }
+        });
+        new Chart(document.getElementById('dimensionChart'), {
+          type: 'radar', data: { labels: dimensionInfo.map(d=>d.key), datasets: candidates.map(n=>({ label:n, data: dimensionInfo.map(d=>parseFloat(dimAvg[n][d.key])||0), borderColor:colorMap[n], backgroundColor:colorMap[n]+'33', borderWidth:2 })) },
+          options: { responsive:true, maintainAspectRatio:false, scales:{r:{beginAtZero:true, max:10}} }
+        });
+      }, 100);
+
+    } catch (err) {
+      output.innerHTML = `<p style="color:red;">获取数据失败：${err.message}</p>`;
     }
-    output.innerHTML = reportHTML;
-
-  } catch (err) {
-    output.innerHTML = `<p style="color:red;">获取数据失败：${err.message}</p>`;
   }
-}
 
-function parseCSV(text) {
-  const rows = [];
-  const lines = text.split(/\r?\n/);
-  for (let line of lines) {
-    if (line.trim() === '') continue;
-    const cols = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (inQuotes) {
-        if (ch === '"') {
-          if (i + 1 < line.length && line[i + 1] === '"') {
-            current += '"';
-            i++;
-          } else {
-            inQuotes = false;
-          }
+  function parseCSV(text) {
+    const rows = [];
+    const lines = text.split(/\r?\n/);
+    for (let line of lines) {
+      if (line.trim() === '') continue;
+      const cols = [];
+      let current = '', inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+          if (ch === '"') { if(line[i+1]==='"'){ current+='"'; i++; } else inQuotes=false; }
+          else current += ch;
         } else {
-          current += ch;
-        }
-      } else {
-        if (ch === '"') {
-          inQuotes = true;
-        } else if (ch === ',') {
-          cols.push(current);
-          current = '';
-        } else {
-          current += ch;
+          if (ch === '"') inQuotes = true;
+          else if (ch === ',') { cols.push(current); current = ''; }
+          else current += ch;
         }
       }
+      cols.push(current);
+      rows.push(cols);
     }
-    cols.push(current);
-    rows.push(cols);
+    return rows;
   }
-  return rows;
-}
 
   // ==================== 问卷模式 ====================
   function loadSurveyMode(jsonStr, lang) {
