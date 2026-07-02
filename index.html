@@ -93,7 +93,32 @@
     .option-group { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; }
     .option-group strong { margin-right:6px; font-size:14px; }
     .option-group label { display:inline-flex; align-items:center; margin:0; font-weight:400; cursor:pointer; white-space:nowrap; font-size:14px; }
-    .option-group input[type="checkbox"] { margin-right:4px; cursor:pointer; width:auto; }
+    .option-group input[type="checkbox"] {
+      margin-right:4px;
+      cursor:pointer;
+      width:18px;
+      height:18px;
+      min-width:18px;
+      min-height:18px;
+      accent-color: var(--accent);
+      appearance: auto;
+      -webkit-appearance: auto;
+      position: relative;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .skip-candidates-label input[type="checkbox"] {
+      width:18px !important;
+      height:18px !important;
+      min-width:18px !important;
+      min-height:18px !important;
+      accent-color: var(--accent);
+      appearance: auto !important;
+      -webkit-appearance: auto !important;
+      display: inline-block !important;
+      vertical-align: middle;
+      position: relative;
+    }
 
     .library-box { border:1px solid var(--border); border-radius:10px; padding:14px; margin:10px 0; background:#fafbfc; }
     .inline-add { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
