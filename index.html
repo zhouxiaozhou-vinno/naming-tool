@@ -604,6 +604,7 @@
       </div>
     `).join('');
   }
+   function saveAndGenerate() {
     const patterns = config.modelRule.rulePatterns;
     if (patterns.some(p=>p.includes('数字')) && config.modelRule.digits.length===0)
       return alert('您勾选了需要数字的规则模式，但未选择任何数字。请至少勾选一项数字档位库中的数字。');
