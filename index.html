@@ -668,7 +668,7 @@
     renderCandidates(); saveConfig();
   };
 
-  // ==================== CEO 报告生成器（增强版） ====================
+  // ==================== CEO 报告生成器（最终修复版） ====================
   async function generateCEOReport() {
     const projectId = config.projectId;
     const output = document.getElementById('reportOutput');
@@ -676,7 +676,6 @@
     output.innerHTML = '<p style="text-align:center;padding:40px;">正在从 Google Sheets 拉取最新数据…</p>';
 
     try {
-      // 1. 获取 CSV 数据
       const resp = await fetch(CSV_URL);
       const csvText = await resp.text();
       const allRows = parseCSV(csvText);
@@ -685,7 +684,6 @@
         return;
       }
 
-      // 2. 解析提交数据（增强版：自动去除双引号）
       let startIndex = 0;
       const firstCell = (allRows[0][0] || '').replace(/^"+|"+$/g, '').trim();
       if (firstCell.includes('时间戳') || firstCell.toLowerCase().includes('timestamp')) {
@@ -694,52 +692,78 @@
 
       const rawData = [];
       const candidateSet = new Set();
-      const allProjectIds = [];  // 收集所有 projectId 用于调试
+      const allProjectIds = [];
+      let skippedCount = 0;
 
       for (let i = startIndex; i < allRows.length; i++) {
         const row = allRows[i];
-        if (row.length < 12) continue;  // 至少要有到 scores_json 的列
+        if (row.length < 12) continue;
 
-        // 第二列是 projectId，去除可能的双引号及首尾空格
         const rowProjectId = (row[1] || '').replace(/^"+|"+$/g, '').trim();
         allProjectIds.push(rowProjectId);
-
-        // 只筛选当前项目
         if (rowProjectId !== projectId) continue;
 
-        // 其他字段同样去除引号
         const dept = (row[2] || '').replace(/^"+|"+$/g, '').trim();
         const intuition = (row[3] || '').replace(/^"+|"+$/g, '').trim();
         const customName = (row[4] || '').replace(/^"+|"+$/g, '').trim();
         const customReason = (row[5] || '').replace(/^"+|"+$/g, '').trim();
-        const scoresJsonStr = (row[11] || '').replace(/^"+|"+$/g, '').trim();
+
+        // 智能查找 scores_json：从行尾往前找第一个非空字段（处理 CSV 可能多出的空列）
+        let scoresJsonStr = '';
+        for (let j = row.length - 1; j >= 6; j--) {
+          if (row[j] && row[j].trim() !== '') {
+            scoresJsonStr = row[j];
+            break;
+          }
+        }
+
+        if (!scoresJsonStr) continue;
+
+        // 清除 CSV 可能包裹的外层双引号，并还原内部双引号转义
+        scoresJsonStr = scoresJsonStr
+          .replace(/^"+|"+$/g, '')
+          .replace(/""/g, '"');
 
         if (!scoresJsonStr) continue;
 
         let scoresObj;
-        try { scoresObj = JSON.parse(scoresJsonStr); } catch (e) { continue; }
+        try {
+          scoresObj = JSON.parse(scoresJsonStr);
+        } catch (e) {
+          skippedCount++;
+          continue;
+        }
 
         const scores = {};
         for (let name in scoresObj) {
+          const cleanName = name.trim();        // 修复候选名前后空格
           const w = parseFloat(scoresObj[name].weighted);
           if (!isNaN(w)) {
-            scores[name.trim()] = w;
-            candidateSet.add(name.trim());
+            scores[cleanName] = w;
+            candidateSet.add(cleanName);
           }
         }
-        if (Object.keys(scores).length === 0) continue;
 
-        rawData.push({ dept, intuition, scores, custom: customName, customReason, rawScores: scoresObj });
+        if (Object.keys(scores).length === 0) {
+          skippedCount++;
+          continue;
+        }
+
+        rawData.push({
+          dept, intuition, scores,
+          custom: customName,
+          customReason,
+          rawScores: scoresObj
+        });
       }
 
-      // 如果没找到数据，给出调试信息
       if (rawData.length === 0) {
         const uniqueIds = [...new Set(allProjectIds)].filter(id => id);
         output.innerHTML = `
           <p>当前项目 <strong>${projectId}</strong> 暂无提交数据。</p>
           <p>CSV 文件中已有的项目 ID：</p>
           <ul>${uniqueIds.map(id => `<li>${id}</li>`).join('')}</ul>
-          <p>请确认管理页面中的项目 ID 是否与 CSV 中的匹配。</p>
+          <p>跳过了 ${skippedCount} 行（可能 JSON 解析失败或数据为空）。</p>
         `;
         return;
       }
@@ -766,7 +790,7 @@
         { key: '延展性', weight: 10 },{ key: '风险控制', weight: 5 }
       ];
 
-      // 3. 计算指标
+      // 计算总体平均分
       const overallAvg = {};
       candidates.forEach(name => {
         const list = rawData.map(d => d.scores[name]).filter(s => s !== undefined);
@@ -774,6 +798,7 @@
       });
       const sorted = candidates.filter(n => overallAvg[n] !== null).sort((a,b)=> parseFloat(overallAvg[b])-parseFloat(overallAvg[a]));
 
+      // 部门分组
       const deptGroups = {};
       rawData.forEach(d => {
         if (!deptGroups[d.dept]) deptGroups[d.dept] = [];
@@ -781,12 +806,14 @@
       });
       const deptLabels = Object.keys(deptGroups);
 
+      // 直觉倾向
       const intuitionCount = {};
       rawData.forEach(d => {
         if (d.intuition && d.intuition !== 'custom') intuitionCount[d.intuition] = (intuitionCount[d.intuition]||0)+1;
         else if (d.intuition === 'custom') intuitionCount['自定义'] = (intuitionCount['自定义']||0)+1;
       });
 
+      // 维度平均分
       const dimTotals = {}, dimCounts = {};
       candidates.forEach(n => { dimTotals[n]={}; dimCounts[n]={}; dimensionInfo.forEach(d=>{ dimTotals[n][d.key]=0; dimCounts[n][d.key]=0; }); });
       rawData.forEach(e => {
@@ -809,7 +836,7 @@
 
       const customEntries = rawData.filter(d => d.custom);
 
-      // 4. 构建报告 HTML（包含导出按钮）
+      // 生成报告 HTML
       let html = `
         <div style="text-align:right;margin-bottom:10px;">
           <button onclick="window.print()" style="padding:10px 24px; background:#1e3a5f; color:white; border:none; border-radius:8px; font-size:14px; cursor:pointer;">🖨️ 导出 / 打印 PDF</button>
@@ -865,7 +892,7 @@
 
       output.innerHTML = html;
 
-      // 5. 绘制图表
+      // 绘制图表
       setTimeout(() => {
         new Chart(document.getElementById('overallChart'), {
           type: 'bar', data: { labels: candidates, datasets: [{ label: '平均分', data: candidates.map(n=>overallAvg[n]), backgroundColor: candidates.map(n=>colorMap[n]), borderRadius:8 }] },
